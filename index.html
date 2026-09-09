@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- Prevenção contra cache do navegador: garante que o visitante -->
+<!-- sempre veja a versão mais recente do site (evita telas antigas -->
+<!-- "presas" no cache após atualizações de preço, texto, etc.). -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
+<title>Freedom Conf. 2026</title>
+<meta name="description" content="Freedom Conf. 2026 — Igreja Batista Peniel Guarujá - Centro. 30 e 31 de outubro." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!-- Estilos centralizados do projeto (site público + admin) -->
+<!-- "?v=1.0.0" força o navegador a buscar a versão nova sempre -->
+<!-- que o número da versão mudar, mesmo com cache antigo salvo. -->
+<link rel="stylesheet" href="css/styles.css?v=1.0.0">
+
+<!-- Gera a imagem do QR code exibida na tela de sucesso da inscrição -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+<!-- ===================== HOME / CAPA ===================== -->
+<section id="home">
+
+  <div class="cover">
+    <svg class="arco" width="620" height="150" viewBox="0 0 620 150">
+      <path id="arcHero" d="M 20 135 Q 310 -35 600 135" fill="transparent" />
+      <text font-size="58"><textPath href="#arcHero" startOffset="50%" text-anchor="middle">FREEDOM CONF.</textPath></text>
+    </svg>
+
+    <div class="date-block">
+      <div class="date-card">
+        <div class="dia">30</div>
+        <div class="mes">Out · Sexta</div>
+        <div class="hora">A partir das 20h</div>
+      </div>
+      <div class="date-card">
+        <div class="dia">31</div>
+        <div class="mes">Out · Sábado</div>
+        <div class="hora">A partir das 14h</div>
+      </div>
+    </div>
+
+    <p class="local">Local: <b>Igreja Batista Peniel Guarujá - Centro</b></p>
+    <p class="descricao">Liberdade não é ausência de correntes. É a presença de Cristo.<br>Freedom é um chamado para experimentar a verdadeira liberdade que somente o Filho pode oferecer.</p>
+
+    <!-- Contagem regressiva viva: atualizada a cada segundo por js/main.js -->
+    <div class="countdown" id="countdown">
+      <div class="cd-box"><div class="num" id="cdDias">00</div><div class="lbl">Dias</div></div>
+      <div class="cd-box"><div class="num" id="cdHoras">00</div><div class="lbl">Horas</div></div>
+      <div class="cd-box"><div class="num" id="cdMin">00</div><div class="lbl">Min</div></div>
+      <div class="cd-box"><div class="num" id="cdSeg">00</div><div class="lbl">Seg</div></div>
+    </div>
+
+    <div><a class="btn btn-primary" href="#inscricao">Fazer inscrição</a></div>
+  </div>
+
+  <div class="info-strip">
+    <div><b>Formato</b>Presencial · 2 dias</div>
+    <div><b>Pagamento</b>PIX</div>
+    <div><b>Classificação</b>12 anos</div>
+  </div>
+
+  <div class="verse">
+    <blockquote>"Se, pois, o Filho vos libertar, verdadeiramente sereis livres."</blockquote>
+    João 8:36
+  </div>
+
+  <div class="details">
+    <div class="details-grid">
+      <div>
+        <h2>Como chegar</h2>
+        <div class="address-lines">
+          <p class="nome-local">Igreja Batista Peniel Guarujá - Centro</p>
+          <p>Avenida Deputado Emílio Carlos, 336</p>
+          <p>Vila Maia, Guarujá — SP</p>
+        </div>
+      </div>
+      <div>
+        <div class="map-box" style="flex-direction:column; gap:8px;">
+          <span style="font-size:28px;">📍</span>
+          <span>Mapa incorporado aqui</span>
+        </div>
+        <a class="btn-line" style="display:inline-block; margin-top:12px; text-decoration:none;"
+           href="https://www.google.com/maps/search/?api=1&query=Avenida+Deputado+Em%C3%ADlio+Carlos%2C+336+-+Vila+Maia%2C+Guaruj%C3%A1+-+SP"
+           target="_blank" rel="noopener">
+          Abrir no Google Maps →
+        </a>
+      </div>
+    </div>
+
+    <div class="programacao">
+      <h2>Programação</h2>
+      <div class="prog-cols">
+        <div class="prog-day">
+          <h3>SEXTA · 30/10</h3>
+          <div class="prog-item"><span>20h00</span><span>Abertura</span></div>
+          <div class="prog-item"><span>20h30</span><span>Palavra / louvor</span></div>
+          <div class="prog-item"><span>22h00</span><span>Encerramento do dia</span></div>
+        </div>
+        <div class="prog-day">
+          <h3>SÁBADO · 31/10</h3>
+          <div class="prog-item"><span>14h00</span><span>Abertura</span></div>
+          <div class="prog-item"><span>15h00</span><span>Palavra / louvor</span></div>
+          <div class="prog-item"><span>22h00</span><span>Encerramento</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-grid">
+      <div>
+        <h4>Freedom Conf.</h4>
+        <p>Uma realização Igreja Batista Peniel Guarujá - Centro.</p>
+      </div>
+      <div>
+        <h4>Contato</h4>
+        <a href="mailto:teenpegmidia@gmail.com">teenpegmidia@gmail.com</a>
+        <a href="tel:+551333841723">(13) 3384-1723</a>
+      </div>
+      <div>
+        <h4>Redes sociais</h4>
+        <a href="https://instagram.com/penielguaruja" target="_blank" rel="noopener">@penielguaruja</a>
+        <a href="https://instagram.com/jopegoficial" target="_blank" rel="noopener">@jopegoficial</a>
+        <a href="https://instagram.com/teen_peg" target="_blank" rel="noopener">@teen_peg</a>
+        <a href="https://www.youtube.com/@igrejapenielguaruja" target="_blank" rel="noopener">YouTube: Igreja Peniel Guarujá</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Freedom Conf. — todos os direitos reservados.</span>
+    </div>
+  </footer>
+</section>
+
+<!-- ===================== INSCRIÇÃO ===================== -->
+<section id="inscricao">
+  <div class="insc-wrap">
+    <svg class="arco" width="300" height="72" viewBox="0 0 300 72">
+      <path id="arcInsc" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
+      <text font-size="30"><textPath href="#arcInsc" startOffset="50%" text-anchor="middle">FREEDOM CONF.</textPath></text>
+    </svg>
+    <h1 class="heading">Escolha sua opção</h1>
+    <p class="sub">Selecione o ingresso, pague via Pix e envie o comprovante.</p>
+
+    <div class="combos" id="combos">
+      <div class="combo" data-id="SEXTA" data-preco="20.00">
+        <span class="badge-check"></span>
+        <div class="dia">Sexta-feira</div>
+        <span class="detalhe">30/10 · a partir das 20h</span>
+        <div class="preco">R$ 20,00<small>/pessoa</small></div>
+      </div>
+      <div class="combo" data-id="SABADO" data-preco="20.00">
+        <span class="badge-check"></span>
+        <div class="dia">Sábado</div>
+        <span class="detalhe">31/10 · a partir das 14h</span>
+        <div class="preco">R$ 20,00<small>/pessoa</small></div>
+      </div>
+      <div class="combo" data-id="COMBO" data-preco="25.00" data-selected="true">
+        <span class="badge-check"></span>
+        <div class="dia">Sexta + Sábado</div>
+        <span class="detalhe">Os dois dias do evento</span>
+        <div class="preco">R$ 25,00<small>/pessoa</small></div>
+      </div>
+    </div>
+
+    <!-- Passo 1: dados da inscrição, chave Pix para pagamento e upload do comprovante -->
+    <div class="form-card" id="formInscricao">
+      <div class="field">
+        <label for="campoNome">Nome completo</label>
+        <input id="campoNome" placeholder="Seu nome" autocomplete="name" />
+      </div>
+      <div class="field">
+        <label for="campoEmail">E-mail</label>
+        <input id="campoEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="campoTelefone">Telefone</label>
+        <input id="campoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" />
+      </div>
+
+      <div class="total-row">
+        <span>Total a pagar<br><span class="pay-icons">
+          <span class="pay-chip">PIX</span>
+        </span></span>
+        <strong id="totalValor">R$ 25,00</strong>
+      </div>
+
+      <!-- Chave Pix exibida para o participante pagar antes de anexar o comprovante -->
+      <div style="background:var(--cinza); border-radius:9px; padding:14px 16px; margin-bottom:18px;">
+        <p style="font-size:12px; color:#555; margin:0 0 4px; font-weight:600; font-family:'Poppins',sans-serif;">
+          Pague com a chave Pix (e-mail)
+        </p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; color:var(--preto); margin:0;">
+          pixpenielguaruja@hotmail.com
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="campoComprovante">Comprovante do Pix (imagem ou PDF)</label>
+        <input id="campoComprovante" type="file" accept="image/*,application/pdf" />
+        <span class="erro-campo" id="erroComprovante" style="display:none;"></span>
+      </div>
+
+      <a class="btn btn-primary" id="btnIrPagamento">Continuar</a>
+      <p id="erroInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+    </div>
+
+    <!-- Passo 2: resumo do pedido antes do envio final -->
+    <div class="form-card resumo-pedido" id="resumoPedido" style="display:none;">
+      <button type="button" class="resumo-voltar" id="btnVoltarResumo">← Voltar</button>
+      <h2>Confirme sua inscrição</h2>
+      <div class="resumo-linhas">
+        <div class="resumo-linha"><span>Nome</span><b id="resumoNomeTxt"></b></div>
+        <div class="resumo-linha"><span>Opção</span><b id="resumoComboTxt"></b></div>
+        <div class="resumo-linha"><span>Comprovante</span><b id="resumoComprovanteTxt">anexado</b></div>
+        <div class="resumo-linha destaque"><span>Total pago via Pix</span><b id="resumoValorTxt"></b></div>
+      </div>
+      <button type="button" class="btn-pix" id="btnConfirmarInscricao">💠 Confirmar inscrição</button>
+      <p id="erroResumo" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+    </div>
+
+    <!-- Passo 3: sucesso — inscrição e comprovante enviados, aguardando confirmação -->
+    <div class="form-card" id="telaSucesso" style="display:none; text-align:center;">
+      <div style="font-size:36px; margin-bottom:10px;">✅</div>
+      <h2 class="heading" style="margin:0 0 8px;">Inscrição enviada!</h2>
+      <p style="color:#555; font-size:14.5px; line-height:1.6; max-width:400px; margin:0 auto 22px;">
+        Recebemos os seus dados e o comprovante do Pix, <span id="nomeSucesso"></span>. A equipe vai conferir o pagamento e confirmar sua entrada em breve.
+      </p>
+
+      <div style="background:var(--cinza); border-radius:14px; padding:24px; display:inline-block;">
+        <div id="comboSucesso" style="font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; color:var(--verde); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px;"></div>
+        <div id="qrcodeBox" style="background:var(--branco); padding:14px; border-radius:10px; display:inline-block;"></div>
+        <p style="font-size:12px; color:#777; margin:12px 0 4px;">Código da inscrição</p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; color:var(--preto);" id="codigoSucesso"></p>
+      </div>
+
+      <p style="color:#555; font-size:13.5px; max-width:380px; margin:22px auto 0; line-height:1.6;">
+        Guarde este código: ele também representa o QR code que será usado na entrada do evento, assim que o pagamento for confirmado.
+      </p>
+      <button type="button" class="btn-line" style="margin-top:16px;" id="btnNovaInscricao">Fazer outra inscrição</button>
+    </div>
+  </div>
+</section>
+
+<!-- 1) conexão com o Supabase; 2) lógica do site público -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js?v=1.0.0"></script>
+<script src="js/main.js?v=1.0.0"></script>
+</body>
+</html>
