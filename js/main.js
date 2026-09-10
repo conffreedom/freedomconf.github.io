@@ -4,18 +4,18 @@
    Lógica do SITE PÚBLICO (index.html):
      1) Contagem regressiva viva até o evento;
      2) Seleção de ingresso (Sexta / Sábado / Combo);
-     3) Validação do formulário de inscrição;
-     4) Upload do comprovante de Pix para o Supabase Storage;
-     5) Geração do código único do ingresso e INSERT na tabela
+     3) Máscara de telefone e validação do formulário;
+     4) Botão "Copiar Chave Pix";
+     5) Checagem de inscrição duplicada (mesmo nome + e-mail);
+     6) Upload do comprovante de Pix para o Supabase Storage;
+     7) Geração do código único do ingresso e INSERT na tabela
         "inscricoes" do Supabase;
-     6) Tela de sucesso com QR code do código gerado.
+     8) Tela de sucesso com status "Aguardando Validação do Pix".
 
    Depende de:
      - js/supabase-client.js (expõe window.supabaseClient e
        window.SUPABASE_COMPROVANTES_BUCKET), carregado ANTES
-       deste arquivo;
-     - biblioteca QRCode.js (window.QRCode), carregada no
-       <head> do index.html.
+       deste arquivo.
    ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -161,7 +161,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const nomeSucesso = document.getElementById('nomeSucesso');
   const comboSucesso = document.getElementById('comboSucesso');
   const codigoSucesso = document.getElementById('codigoSucesso');
-  const qrcodeBox = document.getElementById('qrcodeBox');
 
   // Tamanho máximo aceito para o comprovante (5 MB) e tipos aceitos.
   const TAMANHO_MAXIMO_ARQUIVO = 5 * 1024 * 1024;
@@ -186,7 +185,96 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     4) PASSO 1 → PASSO 2: validação dos dados e do comprovante
+     4) MÁSCARA DE TELEFONE
+     ---------------------------------------------------------- */
+
+  // Formata os dígitos digitados como (00) 00000-0000 (celular, 11
+  // dígitos) ou (00) 0000-0000 (fixo, 10 dígitos), conforme a
+  // quantidade de números já digitada. Qualquer caractere que não
+  // seja dígito é descartado — é assim que letras ficam bloqueadas.
+  function aplicarMascaraTelefone(valorBruto) {
+    const digitos = valorBruto.replace(/\D/g, '').slice(0, 11);
+
+    if (digitos.length === 0) return '';
+    if (digitos.length <= 2) return '(' + digitos;
+
+    const ddd = digitos.slice(0, 2);
+    const restante = digitos.slice(2);
+
+    // Até 10 dígitos no total (2 do DDD + 8 do número): formato de
+    // telefone fixo, bloco de 4 + 4. Com 11 dígitos: celular, 5 + 4.
+    const tamanhoPrimeiroBloco = digitos.length <= 10 ? 4 : 5;
+    const primeiroBloco = restante.slice(0, tamanhoPrimeiroBloco);
+    const segundoBloco = restante.slice(tamanhoPrimeiroBloco);
+
+    let resultado = '(' + ddd + ') ' + primeiroBloco;
+    if (segundoBloco) resultado += '-' + segundoBloco;
+    return resultado;
+  }
+
+  if (campoTelefone) {
+    campoTelefone.setAttribute('maxlength', '15');
+    campoTelefone.setAttribute('inputmode', 'numeric');
+    campoTelefone.addEventListener('input', function (evento) {
+      evento.target.value = aplicarMascaraTelefone(evento.target.value);
+    });
+  }
+
+  /* ----------------------------------------------------------
+     5) BOTÃO "COPIAR CHAVE PIX"
+     ---------------------------------------------------------- */
+
+  const btnCopiarPix = document.getElementById('btnCopiarPix');
+  const chavePixTexto = document.getElementById('chavePixTexto');
+
+  // Copia o texto para a área de transferência. Tenta primeiro a
+  // Clipboard API moderna; se o navegador não suportar (ou a
+  // permissão for negada), cai para o método antigo via
+  // document.execCommand, que funciona em praticamente qualquer
+  // navegador dentro de um clique do usuário.
+  async function copiarTexto(texto) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(texto);
+        return true;
+      } catch (erro) {
+        // segue para o método alternativo abaixo
+      }
+    }
+    try {
+      const areaTemp = document.createElement('textarea');
+      areaTemp.value = texto;
+      areaTemp.style.position = 'fixed';
+      areaTemp.style.opacity = '0';
+      document.body.appendChild(areaTemp);
+      areaTemp.focus();
+      areaTemp.select();
+      document.execCommand('copy');
+      document.body.removeChild(areaTemp);
+      return true;
+    } catch (erro) {
+      return false;
+    }
+  }
+
+  if (btnCopiarPix && chavePixTexto) {
+    btnCopiarPix.addEventListener('click', async function () {
+      const chave = chavePixTexto.textContent.trim();
+      const sucesso = await copiarTexto(chave);
+
+      const textoOriginal = 'Copiar Chave Pix';
+      btnCopiarPix.textContent = sucesso ? 'Copiado! ✓' : 'Não foi possível copiar';
+      btnCopiarPix.classList.toggle('copiado', sucesso);
+
+      setTimeout(function () {
+        btnCopiarPix.textContent = textoOriginal;
+        btnCopiarPix.classList.remove('copiado');
+      }, 2000);
+    });
+  }
+
+  /* ----------------------------------------------------------
+     6) PASSO 1 → PASSO 2: validação dos dados e do comprovante
      ---------------------------------------------------------- */
 
   function validarPasso1() {
@@ -260,7 +348,36 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     5) GERAÇÃO DO CÓDIGO DO INGRESSO
+     7) CHECAGEM DE INSCRIÇÃO DUPLICADA
+     ---------------------------------------------------------- */
+
+  // Considera duplicidade apenas quando NOME COMPLETO e E-MAIL são
+  // ambos exatamente iguais a uma inscrição já existente. Se o
+  // e-mail se repetir com um nome diferente (ex.: alguém inscrevendo
+  // um familiar com o mesmo e-mail de contato), a inscrição segue
+  // normalmente — só o par (nome, e-mail) precisa ser único.
+  async function existeInscricaoDuplicada(nomeCompleto, email) {
+    const { data, error } = await window.supabaseClient
+      .from('inscricoes')
+      .select('id')
+      .eq('nome_completo', nomeCompleto)
+      .eq('email', email)
+      .limit(1);
+
+    if (error) {
+      // Se a checagem em si falhar (ex.: instabilidade de rede),
+      // não travamos a inscrição por causa disso — deixamos seguir
+      // e uma eventual duplicidade é tratada manualmente pela
+      // equipe no painel administrativo.
+      console.error('[main.js] Erro ao checar duplicidade:', error);
+      return false;
+    }
+
+    return Array.isArray(data) && data.length > 0;
+  }
+
+  /* ----------------------------------------------------------
+     8) GERAÇÃO DO CÓDIGO DO INGRESSO
      ---------------------------------------------------------- */
 
   // Gera um código no formato "FC2026-XXXXXX", usando apenas
@@ -285,7 +402,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     6) PASSO 2 → PASSO 3: upload do comprovante + INSERT
+     9) PASSO 2 → PASSO 3: upload do comprovante + INSERT
      ---------------------------------------------------------- */
 
   // Faz upload do arquivo para o bucket "comprovantes" e devolve a
@@ -293,7 +410,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // carimbo de data/hora + número aleatório + extensão — sem
   // depender de normalizar o nome original — o que evita hífens
   // repetidos e caracteres que o Storage do Supabase rejeita em
-  // alguns navegadores/idiomas. "upsert: true" evita o erro 400 em
+  // alguns navegadores/idiomas. "upsert: true" evita erro 400 em
   // caso de qualquer conflito de nome (colisão extremamente rara,
   // já que o nome já é único por natureza).
   async function enviarComprovante(arquivo) {
@@ -344,21 +461,6 @@ document.addEventListener('DOMContentLoaded', function () {
     throw new Error('Não foi possível concluir a inscrição. Tente novamente em instantes.');
   }
 
-  // Gera visualmente o QR code do código do ingresso dentro de
-  // #qrcodeBox. Precisa limpar o conteúdo anterior porque a
-  // biblioteca QRCode.js apenas adiciona elementos, não substitui.
-  function gerarQrCode(codigo) {
-    if (!qrcodeBox || typeof QRCode === 'undefined') return;
-    qrcodeBox.innerHTML = '';
-    new QRCode(qrcodeBox, {
-      text: codigo,
-      width: 140,
-      height: 140,
-      colorDark: '#053827',
-      colorLight: '#FBFAF7',
-    });
-  }
-
   if (btnConfirmarInscricao) {
     btnConfirmarInscricao.addEventListener('click', async function () {
       esconderErro(erroResumo);
@@ -372,16 +474,28 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
+      const nomeCompleto = campoNome.value.trim();
+      const email = campoEmail.value.trim();
+
       btnConfirmarInscricao.disabled = true;
       const textoOriginalBotao = btnConfirmarInscricao.textContent;
-      btnConfirmarInscricao.textContent = 'Enviando...';
 
       try {
+        // Checa duplicidade ANTES de subir o arquivo e gravar
+        // qualquer coisa no banco — evita upload desnecessário.
+        btnConfirmarInscricao.textContent = 'Verificando...';
+        const duplicada = await existeInscricaoDuplicada(nomeCompleto, email);
+        if (duplicada) {
+          mostrarErro(erroResumo, 'Já existe uma inscrição realizada com este Nome e E-mail.');
+          return;
+        }
+
+        btnConfirmarInscricao.textContent = 'Enviando...';
         const urlComprovante = await enviarComprovante(arquivo);
 
         const dadosInscricao = {
-          nome_completo: campoNome.value.trim(),
-          email: campoEmail.value.trim(),
+          nome_completo: nomeCompleto,
+          email: email,
           telefone: campoTelefone.value.trim(),
           tipo_ingresso: estadoInscricao.tipoIngresso,
           valor_pago: estadoInscricao.valor,
@@ -392,11 +506,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const inscricaoCriada = await inserirInscricaoComRetentativa(dadosInscricao, 5);
 
-        // Preenche e exibe a tela de sucesso.
-        nomeSucesso.textContent = campoNome.value.trim().split(' ')[0];
+        // Preenche e exibe a tela de sucesso. O pagamento ainda
+        // depende de conferência manual, então nenhum QR code é
+        // gerado aqui — só o código em texto, como referência.
+        nomeSucesso.textContent = nomeCompleto.split(' ')[0];
         comboSucesso.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso;
         codigoSucesso.textContent = inscricaoCriada.codigo_ingresso;
-        gerarQrCode(inscricaoCriada.codigo_ingresso);
 
         esconderTodasAsTelas();
         telaSucesso.style.display = 'block';
@@ -411,7 +526,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     7) "FAZER OUTRA INSCRIÇÃO": reseta o formulário
+     10) "FAZER OUTRA INSCRIÇÃO": reseta o formulário
      ---------------------------------------------------------- */
 
   if (btnNovaInscricao) {
@@ -423,8 +538,6 @@ document.addEventListener('DOMContentLoaded', function () {
       esconderErro(erroInscricao);
       esconderErro(erroComprovante);
       esconderErro(erroResumo);
-
-      if (qrcodeBox) qrcodeBox.innerHTML = '';
 
       selecionarCombo(comboInicial || listaCombos[0]);
 
