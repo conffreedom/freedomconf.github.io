@@ -18,12 +18,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 
 <!-- Estilos centralizados do projeto (site público + admin) -->
-<!-- "?v=1.0.0" força o navegador a buscar a versão nova sempre -->
+<!-- "?v=2.0.0" força o navegador a buscar a versão nova sempre -->
 <!-- que o número da versão mudar, mesmo com cache antigo salvo. -->
-<link rel="stylesheet" href="css/styles.css?v=1.0.0">
-
-<!-- Gera a imagem do QR code exibida na tela de sucesso da inscrição -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="css/styles.css?v=2.0.0">
 </head>
 <body>
 
@@ -184,7 +181,7 @@
       </div>
       <div class="field">
         <label for="campoTelefone">Telefone</label>
-        <input id="campoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" />
+        <input id="campoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="numeric" maxlength="15" />
       </div>
 
       <div class="total-row">
@@ -195,13 +192,12 @@
       </div>
 
       <!-- Chave Pix exibida para o participante pagar antes de anexar o comprovante -->
-      <div style="background:var(--cinza); border-radius:9px; padding:14px 16px; margin-bottom:18px;">
-        <p style="font-size:12px; color:#555; margin:0 0 4px; font-weight:600; font-family:'Poppins',sans-serif;">
-          Pague com a chave Pix (e-mail)
-        </p>
-        <p style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; color:var(--preto); margin:0;">
-          pixpenielguaruja@hotmail.com
-        </p>
+      <div class="pix-key-box">
+        <p class="pix-key-label">Pague com a chave Pix (e-mail)</p>
+        <div class="pix-key-row">
+          <p class="pix-key-valor" id="chavePixTexto">pixpenielguaruja@hotmail.com</p>
+          <button type="button" class="btn-copiar-pix" id="btnCopiarPix">Copiar Chave Pix</button>
+        </div>
       </div>
 
       <div class="field">
@@ -228,23 +224,24 @@
       <p id="erroResumo" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
     </div>
 
-    <!-- Passo 3: sucesso — inscrição e comprovante enviados, aguardando confirmação -->
+    <!-- Passo 3: sucesso — pagamento ainda pendente de conferência manual -->
     <div class="form-card" id="telaSucesso" style="display:none; text-align:center;">
-      <div style="font-size:36px; margin-bottom:10px;">✅</div>
-      <h2 class="heading" style="margin:0 0 8px;">Inscrição enviada!</h2>
-      <p style="color:#555; font-size:14.5px; line-height:1.6; max-width:400px; margin:0 auto 22px;">
-        Recebemos os seus dados e o comprovante do Pix, <span id="nomeSucesso"></span>. A equipe vai conferir o pagamento e confirmar sua entrada em breve.
+      <div style="font-size:36px; margin-bottom:10px;">⏳</div>
+      <h2 class="heading" style="margin:0 0 10px;">Inscrição enviada!</h2>
+      <span class="status-pendente-badge">Status: Aguardando Validação do Pix</span>
+
+      <p style="color:#555; font-size:14.5px; line-height:1.6; max-width:400px; margin:18px auto 22px;">
+        Recebemos os seus dados e o comprovante do Pix, <span id="nomeSucesso"></span>. Nossa equipe confere os pagamentos em até 24 horas.
       </p>
 
       <div style="background:var(--cinza); border-radius:14px; padding:24px; display:inline-block;">
         <div id="comboSucesso" style="font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; color:var(--verde); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px;"></div>
-        <div id="qrcodeBox" style="background:var(--branco); padding:14px; border-radius:10px; display:inline-block;"></div>
-        <p style="font-size:12px; color:#777; margin:12px 0 4px;">Código da inscrição</p>
-        <p style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; color:var(--preto);" id="codigoSucesso"></p>
+        <p style="font-size:12px; color:#777; margin:0 0 4px;">Código da inscrição</p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700; color:var(--preto); letter-spacing:1px; margin:0;" id="codigoSucesso"></p>
       </div>
 
       <p style="color:#555; font-size:13.5px; max-width:380px; margin:22px auto 0; line-height:1.6;">
-        Guarde este código: ele também representa o QR code que será usado na entrada do evento, assim que o pagamento for confirmado.
+        Guarde este código para referência. Assim que o pagamento for aprovado, o QR code de entrada estará disponível na consulta do participante.
       </p>
       <button type="button" class="btn-line" style="margin-top:16px;" id="btnNovaInscricao">Fazer outra inscrição</button>
     </div>
@@ -253,7 +250,7 @@
 
 <!-- 1) conexão com o Supabase; 2) lógica do site público -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabase-client.js?v=1.0.0"></script>
-<script src="js/main.js?v=1.0.0"></script>
+<script src="js/supabase-client.js?v=2.0.0"></script>
+<script src="js/main.js?v=2.0.0"></script>
 </body>
 </html>
