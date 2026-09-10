@@ -276,19 +276,12 @@ document.addEventListener('DOMContentLoaded', function () {
     return 'FC2026-' + sufixo;
   }
 
-  // Remove acentos, espaços e caracteres especiais do nome do
-  // arquivo, mantendo a extensão original — importante porque o
-  // Storage do Supabase rejeita alguns caracteres em nomes de chave.
-  function sanitizarNomeArquivo(nomeOriginal) {
+  // Simplifica a extração da extensão do arquivo — mantém a
+  // extensão original (em minúsculas) ou usa ".png" como
+  // fallback caso o arquivo não tenha extensão reconhecível.
+  function obterExtensao(nomeOriginal) {
     const partes = nomeOriginal.split('.');
-    const extensao = partes.length > 1 ? '.' + partes.pop().toLowerCase() : '';
-    const nomeBase = partes
-      .join('.')
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
-      .replace(/[^a-zA-Z0-9-_]/g, '-')
-      .toLowerCase()
-      .slice(0, 40);
-    return (nomeBase || 'comprovante') + extensao;
+    return partes.length > 1 ? '.' + partes.pop().toLowerCase() : '.png';
   }
 
   /* ----------------------------------------------------------
@@ -296,15 +289,22 @@ document.addEventListener('DOMContentLoaded', function () {
      ---------------------------------------------------------- */
 
   // Faz upload do arquivo para o bucket "comprovantes" e devolve a
-  // URL pública do arquivo salvo.
+  // URL pública do arquivo salvo. O nome do arquivo é gerado só com
+  // carimbo de data/hora + número aleatório + extensão — sem
+  // depender de normalizar o nome original — o que evita hífens
+  // repetidos e caracteres que o Storage do Supabase rejeita em
+  // alguns navegadores/idiomas. "upsert: true" evita o erro 400 em
+  // caso de qualquer conflito de nome (colisão extremamente rara,
+  // já que o nome já é único por natureza).
   async function enviarComprovante(arquivo) {
-    const nomeArquivoUnico = Date.now() + '-' + sanitizarNomeArquivo(arquivo.name);
+    const extensao = obterExtensao(arquivo.name);
+    const nomeArquivoUnico = `comprovante_${Date.now()}_${Math.floor(Math.random() * 10000)}${extensao}`;
 
     const { error: erroUpload } = await window.supabaseClient.storage
       .from(window.SUPABASE_COMPROVANTES_BUCKET)
       .upload(nomeArquivoUnico, arquivo, {
         cacheControl: '3600',
-        upsert: false,
+        upsert: true,
       });
 
     if (erroUpload) {
