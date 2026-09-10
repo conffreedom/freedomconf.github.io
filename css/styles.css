@@ -168,6 +168,26 @@ footer a:hover{ color:var(--branco); }
 .total-row strong{ font-family:'Bevan',serif; font-size:22px; color:var(--verde); }
 .pay-icons{ display:flex; gap:8px; margin-top:8px; }
 .pay-chip{ font-size:11px; border:1px solid var(--cinza); padding:4px 10px; border-radius:6px; color:#666; font-weight:600;}
+
+/* ---- caixa da chave Pix + botão "Copiar Chave Pix" ---- */
+.pix-key-box{ background:var(--cinza); border-radius:9px; padding:14px 16px; margin-bottom:18px; }
+.pix-key-label{ font-size:12px; color:#555; margin:0 0 8px; font-weight:600; font-family:'Poppins',sans-serif;}
+.pix-key-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.pix-key-valor{ font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; color:var(--preto); margin:0; word-break:break-all;}
+.btn-copiar-pix{
+  background:var(--verde); color:var(--branco); border:none; border-radius:6px;
+  padding:8px 14px; font-size:12px; font-weight:700; cursor:pointer; font-family:'Poppins',sans-serif;
+  white-space:nowrap; flex-shrink:0;
+}
+.btn-copiar-pix:hover{ background:var(--verde-dark); }
+.btn-copiar-pix.copiado{ background:#1F6B3F; }
+
+/* ---- selo de status na tela de sucesso (pagamento pendente) ---- */
+.status-pendente-badge{
+  display:inline-block; background:#F3EAD2; color:#8A6A16; font-family:'Poppins',sans-serif;
+  font-weight:700; font-size:12px; letter-spacing:.5px; padding:7px 16px; border-radius:20px;
+  text-transform:uppercase;
+}
 .form-card .btn-primary{ width:100%; text-align:center; background:var(--verde); color:var(--branco); padding:17px;}
 .form-card .btn-primary:hover{ background:var(--verde-dark); }
 
