@@ -401,6 +401,38 @@ document.addEventListener('DOMContentLoaded', function () {
     return partes.length > 1 ? '.' + partes.pop().toLowerCase() : '.png';
   }
 
+  // Extrai a melhor mensagem de diagnóstico disponível de um erro,
+  // seja ele um Error do JavaScript ou um objeto de erro retornado
+  // pelo Supabase (que às vezes usa "message" e às vezes
+  // "error_description"). Sempre retorna uma string, nunca undefined.
+  function obterMensagemErro(erro, fallback) {
+    if (!erro) return fallback;
+    if (typeof erro === 'string') return erro;
+    return erro.message || erro.error_description || fallback;
+  }
+
+  // Lê o arquivo como ArrayBuffer antes do upload. Isso evita uma
+  // falha conhecida em navegadores mobile (principalmente Safari no
+  // iOS e alguns WebViews no Android): quando o objeto File é
+  // repassado diretamente para o upload, o corpo da requisição às
+  // vezes não é lido corretamente pelo fetch/stream interno desses
+  // navegadores, e a chamada fica "pendurada" por vários segundos
+  // até falhar. Convertendo para ArrayBuffer, o conteúdo do arquivo
+  // já está todo em memória antes do envio, então o upload passa a
+  // se comportar da mesma forma em desktop e em mobile.
+  function lerArquivoComoArrayBuffer(arquivo) {
+    return new Promise(function (resolve, reject) {
+      const leitor = new FileReader();
+      leitor.onload = function () {
+        resolve(leitor.result);
+      };
+      leitor.onerror = function () {
+        reject(new Error('Não foi possível ler o arquivo do comprovante neste dispositivo.'));
+      };
+      leitor.readAsArrayBuffer(arquivo);
+    });
+  }
+
   /* ----------------------------------------------------------
      9) PASSO 2 → PASSO 3: upload do comprovante + INSERT
      ---------------------------------------------------------- */
@@ -412,20 +444,27 @@ document.addEventListener('DOMContentLoaded', function () {
   // repetidos e caracteres que o Storage do Supabase rejeita em
   // alguns navegadores/idiomas. "upsert: true" evita erro 400 em
   // caso de qualquer conflito de nome (colisão extremamente rara,
-  // já que o nome já é único por natureza).
+  // já que o nome já é único por natureza). O conteúdo é enviado
+  // como ArrayBuffer (ver lerArquivoComoArrayBuffer acima) para
+  // manter compatibilidade com navegadores mobile; como o
+  // ArrayBuffer sozinho não carrega o tipo MIME, "contentType" é
+  // informado explicitamente a partir do arquivo original.
   async function enviarComprovante(arquivo) {
     const extensao = obterExtensao(arquivo.name);
     const nomeArquivoUnico = `comprovante_${Date.now()}_${Math.floor(Math.random() * 10000)}${extensao}`;
 
+    const conteudoArquivo = await lerArquivoComoArrayBuffer(arquivo);
+
     const { error: erroUpload } = await window.supabaseClient.storage
       .from(window.SUPABASE_COMPROVANTES_BUCKET)
-      .upload(nomeArquivoUnico, arquivo, {
+      .upload(nomeArquivoUnico, conteudoArquivo, {
         cacheControl: '3600',
         upsert: true,
+        contentType: arquivo.type || 'application/octet-stream',
       });
 
     if (erroUpload) {
-      throw new Error('Não foi possível enviar o comprovante. Tente novamente.');
+      throw new Error('Falha ao enviar o comprovante: ' + obterMensagemErro(erroUpload, 'erro desconhecido no upload.'));
     }
 
     const { data: dadosUrlPublica } = window.supabaseClient.storage
@@ -458,11 +497,28 @@ document.addEventListener('DOMContentLoaded', function () {
       return inserirInscricaoComRetentativa(dadosBase, tentativasRestantes - 1);
     }
 
-    throw new Error('Não foi possível concluir a inscrição. Tente novamente em instantes.');
+    throw new Error('Falha ao salvar a inscrição: ' + obterMensagemErro(error, 'erro desconhecido ao gravar no banco.'));
   }
 
   if (btnConfirmarInscricao) {
-    btnConfirmarInscricao.addEventListener('click', async function () {
+    btnConfirmarInscricao.addEventListener('click', async function (evento) {
+      // Dispara de forma síncrona, ANTES de qualquer código
+      // assíncrono: evita que o clique acione algum comportamento
+      // padrão do navegador (relevante sobretudo em mobile, onde
+      // toques podem disparar eventos extras) e garante que o botão
+      // já nasça bloqueado antes de qualquer "await" rodar.
+      if (evento && typeof evento.preventDefault === 'function') {
+        evento.preventDefault();
+      }
+
+      // Se o botão já está desabilitado, uma segunda batida de dedo
+      // (comum em telas sensíveis, ou no delay de ~300ms de alguns
+      // navegadores mobile) é ignorada — impede disparar duas
+      // inscrições/uploads em paralelo para o mesmo clique.
+      if (btnConfirmarInscricao.disabled) return;
+      btnConfirmarInscricao.disabled = true;
+      const textoOriginalBotao = btnConfirmarInscricao.textContent;
+
       esconderErro(erroResumo);
 
       const arquivo = campoComprovante.files[0];
@@ -471,14 +527,12 @@ document.addEventListener('DOMContentLoaded', function () {
         // mais disponível (ex.: usuário voltou e trocou o campo),
         // manda de volta para o passo 1 em vez de prosseguir.
         mostrarErro(erroResumo, 'O comprovante não foi encontrado. Volte e anexe novamente.');
+        btnConfirmarInscricao.disabled = false;
         return;
       }
 
       const nomeCompleto = campoNome.value.trim();
       const email = campoEmail.value.trim();
-
-      btnConfirmarInscricao.disabled = true;
-      const textoOriginalBotao = btnConfirmarInscricao.textContent;
 
       try {
         // Checa duplicidade ANTES de subir o arquivo e gravar
@@ -517,7 +571,11 @@ document.addEventListener('DOMContentLoaded', function () {
         telaSucesso.style.display = 'block';
         telaSucesso.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (erro) {
-        mostrarErro(erroResumo, erro.message || 'Ocorreu um erro inesperado. Tente novamente.');
+        // Mostra a mensagem REAL do erro (não uma genérica), para
+        // diagnosticar problemas específicos de dispositivo/rede
+        // relatados pelos usuários em campo.
+        console.error('[main.js] Erro ao confirmar inscrição:', erro);
+        mostrarErro(erroResumo, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
       } finally {
         btnConfirmarInscricao.disabled = false;
         btnConfirmarInscricao.textContent = textoOriginalBotao;
