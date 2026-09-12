@@ -36,11 +36,41 @@ body{
 
 /* ================= HOME ================= */
 #home .topbar{
+  position:relative;
   display:flex; justify-content:space-between; align-items:center;
   padding:26px 48px; background:var(--verde); color:var(--branco);
 }
+#home .topbar .logo-mini .arco{ color:var(--bege); }
+#home .topbar nav{ display:flex; align-items:center; }
 #home .topbar nav a{ color:var(--bege); text-decoration:none; margin-left:28px; font-size:13px; font-weight:600; }
 #home .topbar nav a:hover{ color:var(--branco); }
+
+/* ---- CTAs de destaque dentro do menu (primário = inscrever-se; -- */
+/* ---- secundário = quem já se inscreveu / ver credencial)      -- */
+#home .topbar nav .nav-cta-secundario{
+  margin-left:22px; padding:8px 16px; border:1.5px solid rgba(203,199,183,.55);
+  border-radius:999px; font-family:'Poppins',sans-serif; white-space:nowrap;
+}
+#home .topbar nav .nav-cta-secundario:hover{ border-color:var(--branco); color:var(--branco); }
+#home .topbar nav .nav-cta-primario{
+  margin-left:14px; padding:9px 20px; border-radius:999px;
+  background:var(--bege); color:var(--verde-dark); font-family:'Poppins',sans-serif;
+  font-weight:700; white-space:nowrap;
+}
+#home .topbar nav .nav-cta-primario:hover{ background:var(--branco); color:var(--verde-dark); }
+
+/* ---- botão hambúrguer (só aparece em telas estreitas) ---- */
+.menu-toggle{
+  display:none; flex-direction:column; justify-content:center; gap:5px;
+  width:34px; height:34px; padding:0; background:none; border:none; cursor:pointer;
+}
+.menu-toggle span{
+  display:block; width:100%; height:2px; background:var(--branco); border-radius:2px;
+  transition:transform .2s ease, opacity .2s ease;
+}
+.menu-toggle.aberto span:nth-child(1){ transform:translateY(7px) rotate(45deg); }
+.menu-toggle.aberto span:nth-child(2){ opacity:0; }
+.menu-toggle.aberto span:nth-child(3){ transform:translateY(-7px) rotate(-45deg); }
 
 .cover{
   background:var(--verde); color:var(--branco);
@@ -135,6 +165,14 @@ footer a:hover{ color:var(--branco); }
 }
 
 /* ================= INSCRIÇÃO ================= */
+
+/* ---- barra fixa no topo do inscricao.html com o botão de voltar ---- */
+.pagina-voltar-bar{
+  padding:18px 24px; display:flex; align-items:center;
+  background:var(--branco); border-bottom:1px solid var(--cinza);
+}
+.pagina-voltar-bar .btn-line{ padding:8px 16px; font-size:12.5px; }
+
 #inscricao{ background:var(--cinza); }
 .insc-wrap{ max-width:640px; margin:0 auto; padding:70px 24px 90px; text-align:center; }
 .insc-wrap .arco{ color:var(--verde); margin-bottom:16px; }
@@ -350,13 +388,44 @@ tbody tr:hover{ background:#F6F5F2; }
 .checkin-contador .num{ font-family:'Bevan',serif; font-size:24px; color:var(--bege); }
 .checkin-contador .lbl{ font-size:11px; color:#999; text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
 
+/* ================= SCROLL REVEAL (fade-in ao rolar) =================
+   Classes puras: js/main.js só alterna ".visivel" via
+   IntersectionObserver conforme a seção entra na tela — toda a
+   animação em si (opacity + transform) fica aqui no CSS. */
+.fade-in-section{
+  opacity:0; transform:translateY(28px);
+  transition:opacity .7s ease, transform .7s ease;
+}
+.fade-in-section.visivel{ opacity:1; transform:translateY(0); }
+
+/* Quem prefere menos movimento na tela vê o conteúdo direto, sem a
+   animação de entrada. */
+@media (prefers-reduced-motion: reduce){
+  .fade-in-section{ transition:none; opacity:1; transform:none; }
+}
+
 @media (max-width: 760px){
-  #home .topbar, #inscricao .topbar, .dash-top, .dash-body{ padding-left:20px; padding-right:20px; }
+  #home .topbar, #inscricao .topbar, .pagina-voltar-bar, .dash-top, .dash-body{ padding-left:20px; padding-right:20px; }
   .stat-row{ grid-template-columns:repeat(2,1fr); }
   .combos{ grid-template-columns:1fr; }
   .date-block{ flex-wrap:wrap; justify-content:center; }
   .details-grid, .prog-cols, .footer-grid{ grid-template-columns:1fr; }
   table{ font-size:12px; }
+
+  /* ---- menu mobile: esconde a nav e mostra o hambúrguer ---- */
+  .menu-toggle{ display:flex; }
+  #home .topbar nav{
+    display:none; position:absolute; top:100%; left:0; right:0;
+    flex-direction:column; align-items:stretch; gap:4px;
+    background:var(--verde-dark); padding:14px 20px 20px; z-index:20;
+  }
+  #home .topbar nav.aberto{ display:flex; }
+  #home .topbar nav a{ margin-left:0; padding:12px 4px; border-bottom:1px solid rgba(203,199,183,.15); }
+  #home .topbar nav a:last-child{ border-bottom:none; }
+  #home .topbar nav .nav-cta-secundario,
+  #home .topbar nav .nav-cta-primario{
+    margin-left:0; margin-top:8px; text-align:center; border-bottom:none;
+  }
 }
 
 @media (max-width: 600px){
