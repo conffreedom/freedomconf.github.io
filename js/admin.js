@@ -229,6 +229,12 @@ document.addEventListener('DOMContentLoaded', function () {
     listaInscricoes = data || [];
     renderizarTabela();
     atualizarEstatisticas();
+    // Mantém os contadores da tela de Portaria (Check-ins feitos /
+    // Aprovados no total) sempre em dia com os dados mais recentes,
+    // mesmo que a portaria ainda não tenha sido aberta — assim, ao
+    // clicar em "Abrir Portaria", os números já aparecem corretos em
+    // vez de começarem em 0 até a primeira leitura/busca manual.
+    atualizarContadoresCheckin();
   }
 
   function badgeStatusHtml(status) {
@@ -572,15 +578,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
   btnIrCheckin.addEventListener('click', function () {
     mostrarTela('checkin');
-    // Começa a portaria "limpa": sem resultado de leitura anterior
-    // na tela e sem nenhum código digitado sobrando no campo manual.
-    checkinResultado.className = 'checkin-resultado';
-    checkinResultadoTitulo.textContent = '';
-    checkinResultadoDetalhe.textContent = '';
-    esconderBadgesDias();
-    codigoManualInput.value = '';
+
+    // Começa a portaria "limpa": sem resultado de leitura anterior na
+    // tela e sem nenhum código digitado sobrando no campo manual. Cada
+    // passo do reset é isolado em seu próprio try/catch para que uma
+    // falha pontual (ex.: um elemento ausente no HTML) não impeça os
+    // passos seguintes — em especial a inicialização da câmera e a
+    // atualização dos contadores, que são os mais importantes aqui.
+    try { checkinResultado.className = 'checkin-resultado'; } catch (e) { console.error('[admin.js] Falha ao resetar o card de resultado:', e); }
+    try { checkinResultadoTitulo.textContent = ''; } catch (e) { console.error('[admin.js] Falha ao limpar o título do resultado:', e); }
+    try { checkinResultadoDetalhe.textContent = ''; } catch (e) { console.error('[admin.js] Falha ao limpar o detalhe do resultado:', e); }
+    try { esconderBadgesDias(); } catch (e) { console.error('[admin.js] Falha ao esconder os badges de dia:', e); }
+    try { codigoManualInput.value = ''; } catch (e) { console.error('[admin.js] Falha ao limpar o campo manual:', e); }
+
     processandoCheckin = false;
     cooldownCameraAtivo = false;
+
+    // Contadores e câmera são disparados por último e sempre executam,
+    // independentemente do resultado dos passos de reset acima.
     atualizarContadoresCheckin();
     iniciarScannerCamera();
   });
@@ -646,6 +661,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const aplicaveis = diasDoIngresso(inscricao.tipo_ingresso);
 
     function configurarBadge(elemento, chaveDia, rotulo) {
+      // Blindagem: se o elemento não existir no HTML por algum motivo
+      // (ex.: uma versão desatualizada do admin.html em cache), não
+      // deixa o restante do fluxo de check-in (card de resultado,
+      // contadores, câmera) travar por causa de um badge só.
+      if (!elemento) {
+        console.error('[admin.js] Elemento de badge "' + chaveDia + '" não encontrado no HTML.');
+        return;
+      }
       if (!aplicaveis.includes(chaveDia)) {
         elemento.style.display = 'none';
         return;
@@ -662,8 +685,8 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function esconderBadgesDias() {
-    badgeSexta.style.display = 'none';
-    badgeSabado.style.display = 'none';
+    if (badgeSexta) badgeSexta.style.display = 'none';
+    if (badgeSabado) badgeSabado.style.display = 'none';
   }
 
   // Decide em qual dia registrar o check-in agora: se hoje for
@@ -833,11 +856,36 @@ document.addEventListener('DOMContentLoaded', function () {
   function iniciarScannerCamera() {
     if (typeof Html5Qrcode === 'undefined') {
       console.error('[admin.js] Biblioteca html5-qrcode não carregada.');
+      mostrarResultadoCheckin(
+        'erro',
+        'Leitor de QR indisponível',
+        'A biblioteca de leitura não carregou. Recarregue a página ou use a validação manual abaixo.'
+      );
       return;
     }
     if (scannerCamera) return; // já está rodando
 
-    scannerCamera = new Html5Qrcode('qr-reader');
+    // Limpa qualquer resíduo visual de uma instância anterior (ex.:
+    // player de câmera ou mensagem de erro da lib) antes de criar uma
+    // nova — evita que o html5-qrcode tente montar a câmera em cima
+    // de um elemento que já tem conteúdo de uma sessão de portaria
+    // anterior, o que pode impedir a nova solicitação de permissão.
+    const containerLeitor = document.getElementById('qr-reader');
+    if (containerLeitor) containerLeitor.innerHTML = '';
+
+    let instancia;
+    try {
+      instancia = new Html5Qrcode('qr-reader');
+    } catch (erroCriacao) {
+      console.error('[admin.js] Erro ao criar o leitor de QR code:', erroCriacao);
+      mostrarResultadoCheckin(
+        'erro',
+        'Câmera indisponível',
+        'Não foi possível preparar o leitor de câmera. Use a validação manual abaixo.'
+      );
+      return;
+    }
+    scannerCamera = instancia;
 
     const configuracao = { fps: 10, qrbox: { width: 240, height: 240 } };
 
@@ -860,26 +908,33 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       )
       .catch(function (erro) {
+        // Erro de permissão negada, câmera inexistente, contexto não
+        // seguro (http em vez de https/localhost), etc. — a portaria
+        // continua funcional pela validação manual, e a instância é
+        // liberada para que uma nova tentativa (reabrir a tela, ex.)
+        // não fique bloqueada por um scannerCamera "morto".
         mostrarResultadoCheckin(
           'erro',
           'Câmera indisponível',
           'Não foi possível acessar a câmera. Verifique as permissões do navegador ou use a validação manual abaixo.'
         );
         console.error('[admin.js] Erro ao iniciar a câmera:', erro);
+        scannerCamera = null;
       });
   }
 
   function pararScannerCamera() {
     cooldownCameraAtivo = false;
     if (!scannerCamera) return;
-    scannerCamera
+    const instanciaAtual = scannerCamera;
+    scannerCamera = null; // libera imediatamente para permitir novo início
+    instanciaAtual
       .stop()
       .then(function () {
-        scannerCamera.clear();
-        scannerCamera = null;
+        instanciaAtual.clear();
       })
       .catch(function () {
-        scannerCamera = null;
+        // Ignorado: a instância já foi descartada de qualquer forma.
       });
   }
 
