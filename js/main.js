@@ -604,4 +604,152 @@ document.addEventListener('DOMContentLoaded', function () {
       telaForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
+
+  /* ----------------------------------------------------------
+     11) CONSULTAR MINHA INSCRIÇÃO
+     ---------------------------------------------------------- */
+
+  const campoBuscaInscricao = document.getElementById('campoBuscaInscricao');
+  const btnBuscarInscricao = document.getElementById('btnBuscarInscricao');
+  const erroBuscaInscricao = document.getElementById('erroBuscaInscricao');
+
+  const resultadoConsulta = document.getElementById('resultadoConsulta');
+  const resultadoPendente = document.getElementById('resultadoPendente');
+  const resultadoRecusado = document.getElementById('resultadoRecusado');
+  const resultadoAprovado = document.getElementById('resultadoAprovado');
+  const resultadoNaoEncontrado = document.getElementById('resultadoNaoEncontrado');
+
+  const pendenteNome = document.getElementById('pendenteNome');
+  const pendenteCombo = document.getElementById('pendenteCombo');
+  const pendenteCodigo = document.getElementById('pendenteCodigo');
+
+  const recusadoNome = document.getElementById('recusadoNome');
+  const recusadoCodigo = document.getElementById('recusadoCodigo');
+
+  const aprovadoNome = document.getElementById('aprovadoNome');
+  const aprovadoCombo = document.getElementById('aprovadoCombo');
+  const aprovadoCodigo = document.getElementById('aprovadoCodigo');
+  const aprovadoQrcodeBox = document.getElementById('aprovadoQrcodeBox');
+
+  // Decide se o texto digitado deve ser buscado como e-mail ou como
+  // código de inscrição — nunca como CPF, que não existe em lugar
+  // nenhum deste sistema. A regra é simples: se tem "@", é e-mail;
+  // caso contrário, tratamos como código (normalizado em maiúsculas,
+  // já que é assim que ele é gerado e exibido ao participante).
+  function detectarTipoBusca(valorDigitado) {
+    const valor = valorDigitado.trim();
+    if (valor.includes('@')) {
+      return { campo: 'email', valor: valor };
+    }
+    return { campo: 'codigo_ingresso', valor: valor.toUpperCase() };
+  }
+
+  // Esconde os 4 possíveis cartões de resultado e mostra só o
+  // indicado (ou nenhum, se idEstado for null — usado para "resetar"
+  // antes de uma nova busca).
+  function mostrarEstadoConsulta(idEstado) {
+    [resultadoPendente, resultadoRecusado, resultadoAprovado, resultadoNaoEncontrado].forEach(function (cartao) {
+      if (cartao) cartao.style.display = 'none';
+    });
+    if (idEstado) {
+      idEstado.style.display = 'block';
+    }
+    resultadoConsulta.style.display = 'block';
+    resultadoConsulta.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Gera o QR code do código de entrada dentro de #aprovadoQrcodeBox.
+  // Precisa limpar o conteúdo anterior porque a biblioteca QRCode.js
+  // só adiciona elementos, nunca substitui os que já existem — sem
+  // isso, cada nova busca aprovada empilharia um QR code em cima do
+  // outro.
+  function gerarQrCodeConsulta(codigo) {
+    if (!aprovadoQrcodeBox || typeof QRCode === 'undefined') return;
+    aprovadoQrcodeBox.innerHTML = '';
+    new QRCode(aprovadoQrcodeBox, {
+      text: codigo,
+      width: 140,
+      height: 140,
+      colorDark: '#053827',
+      colorLight: '#FBFAF7',
+    });
+  }
+
+  async function buscarInscricao() {
+    esconderErro(erroBuscaInscricao);
+
+    const valorDigitado = campoBuscaInscricao.value.trim();
+    if (!valorDigitado) {
+      mostrarErro(erroBuscaInscricao, 'Digite seu e-mail ou o código da inscrição.');
+      return;
+    }
+
+    const { campo, valor } = detectarTipoBusca(valorDigitado);
+
+    btnBuscarInscricao.disabled = true;
+    const textoOriginalBotao = btnBuscarInscricao.textContent;
+    btnBuscarInscricao.textContent = 'Buscando...';
+
+    try {
+      // Por e-mail: uma mesma pessoa pode ter mais de uma inscrição
+      // (ex.: comprou para si e depois para um familiar com o mesmo
+      // e-mail de contato) — nesse caso, mostramos a mais recente.
+      // Por código: o valor já é único por natureza, então "limit(1)"
+      // aqui é só uma garantia extra, nunca deveria haver mais de um.
+      const { data, error } = await window.supabaseClient
+        .from('inscricoes')
+        .select('*')
+        .eq(campo, valor)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        mostrarErro(erroBuscaInscricao, obterMensagemErro(error, 'Não foi possível concluir a busca. Tente novamente.'));
+        return;
+      }
+
+      if (!data) {
+        mostrarEstadoConsulta(resultadoNaoEncontrado);
+        return;
+      }
+
+      const primeiroNome = (data.nome_completo || '').split(' ')[0];
+      const nomeComboExibicao = NOMES_COMBO[data.tipo_ingresso] || data.tipo_ingresso;
+
+      if (data.status_pagamento === 'aprovado') {
+        aprovadoNome.textContent = primeiroNome;
+        aprovadoCombo.textContent = nomeComboExibicao;
+        aprovadoCodigo.textContent = data.codigo_ingresso;
+        gerarQrCodeConsulta(data.codigo_ingresso);
+        mostrarEstadoConsulta(resultadoAprovado);
+      } else if (data.status_pagamento === 'recusado') {
+        recusadoNome.textContent = primeiroNome;
+        recusadoCodigo.textContent = data.codigo_ingresso;
+        mostrarEstadoConsulta(resultadoRecusado);
+      } else {
+        // Qualquer outro valor (na prática, "pendente") cai aqui.
+        pendenteNome.textContent = primeiroNome;
+        pendenteCombo.textContent = nomeComboExibicao;
+        pendenteCodigo.textContent = data.codigo_ingresso;
+        mostrarEstadoConsulta(resultadoPendente);
+      }
+    } catch (erro) {
+      console.error('[main.js] Erro ao buscar inscrição:', erro);
+      mostrarErro(erroBuscaInscricao, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
+    } finally {
+      btnBuscarInscricao.disabled = false;
+      btnBuscarInscricao.textContent = textoOriginalBotao;
+    }
+  }
+
+  if (btnBuscarInscricao) {
+    btnBuscarInscricao.addEventListener('click', buscarInscricao);
+  }
+
+  if (campoBuscaInscricao) {
+    campoBuscaInscricao.addEventListener('keydown', function (evento) {
+      if (evento.key === 'Enter') buscarInscricao();
+    });
+  }
 });
