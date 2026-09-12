@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 
 <!-- Estilos centralizados do projeto (mesmo arquivo do site público) -->
-<link rel="stylesheet" href="css/styles.css?v=3">
+<link rel="stylesheet" href="css/styles.css?v=4">
 
 <!-- Leitor de QR code pela câmera, usado na tela de Check-in -->
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -142,6 +142,13 @@
     <div class="checkin-resultado" id="checkinResultado">
       <div class="titulo" id="checkinResultadoTitulo"></div>
       <div class="detalhe" id="checkinResultadoDetalhe"></div>
+      <!-- Badges de status por dia (Sexta/Sábado). Combo mostra os dois;
+           ingresso de dia único mostra só o badge correspondente — a
+           lógica de exibir/ocultar cada um fica em js/admin.js. -->
+      <div class="checkin-dias" id="checkinDiasBox">
+        <span class="checkin-dia-badge" id="badgeSexta"></span>
+        <span class="checkin-dia-badge" id="badgeSabado"></span>
+      </div>
     </div>
 
     <div class="checkin-contador">
@@ -160,6 +167,6 @@
 <!-- 1) conexão com o Supabase; 2) lógica do painel administrativo -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js?v=2.0.0"></script>
-<script src="js/admin.js?v=2.0.0"></script>
+<script src="js/admin.js?v=2.1.0"></script>
 </body>
 </html>
