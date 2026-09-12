@@ -218,30 +218,32 @@ footer a:hover{ color:var(--branco); }
 .resumo-voltar:hover{ color:var(--verde); }
 
 /* ================= LOGIN (admin) ================= */
-/* O elemento #login também é alternado pelo js/admin.js via
-   "tela.style.display = 'block'/'none'" (estilo inline, para
-   garantir que a tela escondida fique 100% oculta mesmo com CSS
-   em cache). Um estilo inline sempre vence uma regra normal de
-   CSS — por isso "display:flex" aqui precisa de "!important": é a
-   única forma da folha de estilos continuar no controle do layout
-   (centralização) quando a tela está com display:block vindo do
-   JS. "min-height:100dvh" (Dynamic Viewport Height) evita o "vão"
-   no rodapé em navegadores mobile, onde 100vh costuma incluir a
-   área coberta pela barra de endereço; "100vh" antes dela é só um
-   fallback para navegadores mais antigos, que ignoram "dvh". */
-#login{
-  background:var(--preto);
-  min-height:100vh;
-  min-height:100dvh;
+/* O elemento #login é alternado pelo js/admin.js via classe
+   ".hidden"/atributo "hidden" e também via estilo inline
+   "display". A regra abaixo só aplica "display:flex" quando a
+   tela NÃO está marcada como escondida — ou seja, o seletor
+   simplesmente deixa de bater com o elemento assim que ele é
+   ocultado, então não há necessidade (nem risco) de um
+   "!important" cego brigando com o próprio JS que fecha a tela.
+   A regra ".hidden"/"[hidden]" logo em seguida é quem garante,
+   com todas as letras, que a tela fecha de verdade. */
+#login:not(.hidden):not([style*="display: none"]){
   display:flex !important;
   flex-direction:column;
   align-items:center;
   justify-content:center;
+  min-height:100vh;
+  min-height:100dvh;
   padding:24px;
   box-sizing:border-box;
+  background:var(--preto);
   color:var(--branco);
 }
-.login-card{ width:100%; max-width:400px; background:#2E2E2E; border-radius:16px; padding:44px 36px; text-align:center; box-sizing:border-box;}
+#login.hidden,
+#login[hidden]{
+  display:none !important;
+}
+.login-card{ width:100%; max-width:420px; background:#2E2E2E; border-radius:16px; padding:44px 36px; text-align:center; box-sizing:border-box;}
 .login-card .arco{ color:var(--bege); margin-bottom:20px;}
 .login-card h1{ font-size:22px; margin:0 0 6px; font-family:'Poppins',sans-serif;}
 .login-card .sub{ color:#9A9A9A; font-size:13px; margin-bottom:28px;}
@@ -315,6 +317,17 @@ tbody tr:hover{ background:#F6F5F2; }
 .checkin-resultado.erro{ background:rgba(177,76,51,.15); border:1.5px solid #B14C33; display:block; }
 .checkin-resultado .titulo{ font-family:'Poppins',sans-serif; font-weight:700; font-size:16px; margin-bottom:4px; }
 .checkin-resultado .detalhe{ font-size:13px; color:#D9D9D9; }
+
+/* ---- badges de check-in por dia (Sexta / Sábado), dentro do
+   resultado da portaria — só aparecem os dias que fazem parte do
+   tipo de ingresso da pessoa (Sexta, Sábado ou Combo = os dois). ---- */
+.checkin-dias{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+.checkin-dia-badge{
+  font-size:12px; font-weight:700; padding:6px 14px; border-radius:20px;
+  font-family:'Poppins',sans-serif; letter-spacing:.3px; display:none;
+}
+.checkin-dia-badge.realizado{ background:#E1EEE4; color:#1F6B3F; }
+.checkin-dia-badge.pendente{ background:#F3EAD2; color:#8A6A16; }
 .checkin-contador{
   display:flex; justify-content:space-around; background:#2E2E2E; border-radius:12px; padding:16px; margin-top:24px;
 }
