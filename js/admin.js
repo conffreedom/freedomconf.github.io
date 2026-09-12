@@ -30,17 +30,19 @@ document.addEventListener('DOMContentLoaded', function () {
   const telaDashboard = document.getElementById('dashboard');
   const telaCheckin = document.getElementById('checkin');
 
-  // Alterna qual das 3 telas fica visível. Além de ligar/desligar a
-  // classe ".active" (usada pela animação de entrada em
-  // css/styles.css), também força "display" diretamente no estilo
-  // inline de cada tela — isso garante que a tela escondida fique
-  // SEMPRE completamente oculta (display:none), mesmo que o CSS
-  // externo ainda não tenha carregado ou esteja com cache antigo.
+  // Alterna qual das 3 telas fica visível. Marca a tela ativa com
+  // ".active" (para a animação de entrada em css/styles.css) e as
+  // demais com ".hidden" — essa classe é o que a regra
+  // "#login.hidden{ display:none !important; }" usa para fechar a
+  // tela de login de forma garantida. Também mantemos o "display"
+  // inline como reforço para os outros dois <section>, que não têm
+  // uma regra especial de layout como o login.
   function mostrarTela(idTela) {
     [telaLogin, telaDashboard, telaCheckin].forEach(function (tela) {
       if (!tela) return;
       const estaAtiva = tela.id === idTela;
       tela.classList.toggle('active', estaAtiva);
+      tela.classList.toggle('hidden', !estaAtiva);
       tela.style.display = estaAtiva ? 'block' : 'none';
     });
   }
@@ -575,6 +577,7 @@ document.addEventListener('DOMContentLoaded', function () {
     checkinResultado.className = 'checkin-resultado';
     checkinResultadoTitulo.textContent = '';
     checkinResultadoDetalhe.textContent = '';
+    esconderBadgesDias();
     codigoManualInput.value = '';
     processandoCheckin = false;
     cooldownCameraAtivo = false;
@@ -602,6 +605,86 @@ document.addEventListener('DOMContentLoaded', function () {
   const checkinResultadoDetalhe = document.getElementById('checkinResultadoDetalhe');
   const checkinContadorFeitos = document.getElementById('checkinContadorFeitos');
   const checkinContadorAprovados = document.getElementById('checkinContadorAprovados');
+
+  // Badges de check-in por dia (Sexta / Sábado), exibidos dentro do
+  // resultado da portaria.
+  const checkinDiasBox = document.getElementById('checkinDiasBox');
+  const badgeSexta = document.getElementById('badgeSexta');
+  const badgeSabado = document.getElementById('badgeSabado');
+
+  // Datas reais do evento — usadas para descobrir automaticamente
+  // "qual dia é hoje" e, com isso, decidir sozinho em qual dos dois
+  // dias (Sexta ou Sábado) o check-in deve ser registrado, sem a
+  // portaria precisar escolher manualmente um botão de dia.
+  const DATA_SEXTA_ISO = '2026-10-30';
+  const DATA_SABADO_ISO = '2026-10-31';
+
+  function obterDataHojeIso() {
+    const agora = new Date();
+    const ano = agora.getFullYear();
+    const mes = String(agora.getMonth() + 1).padStart(2, '0');
+    const dia = String(agora.getDate()).padStart(2, '0');
+    return ano + '-' + mes + '-' + dia;
+  }
+
+  // Quais dias (checkin_sexta / checkin_sabado) fazem parte do
+  // ingresso da pessoa, de acordo com o tipo comprado.
+  function diasDoIngresso(tipoIngresso) {
+    if (tipoIngresso === 'COMBO') return ['sexta', 'sabado'];
+    if (tipoIngresso === 'SEXTA') return ['sexta'];
+    if (tipoIngresso === 'SABADO') return ['sabado'];
+    return [];
+  }
+
+  // Mostra/esconde e estiliza os dois badges de dia dentro do
+  // resultado da portaria, de acordo com o tipo de ingresso da
+  // pessoa e o estado atual de cada campo checkin_sexta/checkin_sabado.
+  // NOTA: assume que a tabela "inscricoes" tem as colunas booleanas
+  // "checkin_sexta" e "checkin_sabado" — se os nomes reais forem
+  // diferentes no seu banco, é só avisar que ajusto rapidinho.
+  function atualizarBadgesDias(inscricao) {
+    const aplicaveis = diasDoIngresso(inscricao.tipo_ingresso);
+
+    function configurarBadge(elemento, chaveDia, rotulo) {
+      if (!aplicaveis.includes(chaveDia)) {
+        elemento.style.display = 'none';
+        return;
+      }
+      const feito = Boolean(inscricao['checkin_' + chaveDia]);
+      elemento.style.display = 'inline-block';
+      elemento.textContent = rotulo + ': ' + (feito ? 'Realizado' : 'Pendente');
+      elemento.classList.toggle('realizado', feito);
+      elemento.classList.toggle('pendente', !feito);
+    }
+
+    configurarBadge(badgeSexta, 'sexta', 'Sexta');
+    configurarBadge(badgeSabado, 'sabado', 'Sábado');
+  }
+
+  function esconderBadgesDias() {
+    badgeSexta.style.display = 'none';
+    badgeSabado.style.display = 'none';
+  }
+
+  // Decide em qual dia registrar o check-in agora: se hoje for
+  // exatamente uma das datas do evento (e esse dia fizer parte do
+  // ingresso), usa esse dia. Fora das datas do evento — o caso mais
+  // comum sendo testes antes do evento — usa o primeiro dia
+  // aplicável que ainda estiver pendente. Devolve null quando todos
+  // os dias aplicáveis já foram concluídos.
+  function decidirDiaParaCheckin(inscricao) {
+    const aplicaveis = diasDoIngresso(inscricao.tipo_ingresso);
+    const hoje = obterDataHojeIso();
+
+    if (hoje === DATA_SEXTA_ISO && aplicaveis.includes('sexta') && !inscricao.checkin_sexta) {
+      return 'sexta';
+    }
+    if (hoje === DATA_SABADO_ISO && aplicaveis.includes('sabado') && !inscricao.checkin_sabado) {
+      return 'sabado';
+    }
+
+    return aplicaveis.find(function (dia) { return !inscricao['checkin_' + dia]; }) || null;
+  }
 
   function atualizarContadoresCheckin() {
     const aprovados = listaInscricoes.filter(function (i) { return i.status_pagamento === 'aprovado'; });
@@ -636,6 +719,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const codigo = (codigoDigitado || '').trim().toUpperCase();
     if (!codigo) {
+      esconderBadgesDias();
       mostrarResultadoCheckin('erro', 'Código vazio', 'Digite ou escaneie um código válido.');
       return;
     }
@@ -651,11 +735,13 @@ document.addEventListener('DOMContentLoaded', function () {
         .maybeSingle();
 
       if (error || !inscricao) {
+        esconderBadgesDias();
         mostrarResultadoCheckin('erro', 'Código não encontrado', 'Confira o código e tente novamente: ' + codigo);
         return;
       }
 
       if (inscricao.status_pagamento !== 'aprovado') {
+        esconderBadgesDias();
         mostrarResultadoCheckin(
           'aviso',
           'Pagamento ainda não aprovado',
@@ -664,14 +750,26 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      if (inscricao.checkin_realizado) {
-        mostrarResultadoCheckin('aviso', 'Check-in já realizado', inscricao.nome_completo + ' já entrou anteriormente.');
+      const diaParaCheckin = decidirDiaParaCheckin(inscricao);
+
+      if (!diaParaCheckin) {
+        atualizarBadgesDias(inscricao);
+        mostrarResultadoCheckin('aviso', 'Check-in já realizado', inscricao.nome_completo + ' já entrou em todos os dias do ingresso.');
         return;
       }
 
+      const nomeDiaExibicao = diaParaCheckin === 'sexta' ? 'Sexta-feira' : 'Sábado';
+
+      const camposParaAtualizar = {};
+      camposParaAtualizar['checkin_' + diaParaCheckin] = true;
+      // Mantém "checkin_realizado" (usado pelo dashboard e pelos
+      // contadores gerais) sempre em dia com os dois campos novos:
+      // vira verdadeiro assim que QUALQUER um dos dias for concluído.
+      camposParaAtualizar.checkin_realizado = true;
+
       const { error: erroUpdate } = await window.supabaseClient
         .from('inscricoes')
-        .update({ checkin_realizado: true })
+        .update(camposParaAtualizar)
         .eq('id', inscricao.id);
 
       if (erroUpdate) {
@@ -682,6 +780,7 @@ document.addEventListener('DOMContentLoaded', function () {
       // Reflete a mudança na cópia local para os contadores da
       // portaria e do dashboard ficarem corretos sem novo fetch (o
       // Realtime também vai confirmar essa mudança pouco depois).
+      inscricao['checkin_' + diaParaCheckin] = true;
       inscricao.checkin_realizado = true;
       const jaExisteNaLista = listaInscricoes.some(function (i) { return String(i.id) === String(inscricao.id); });
       if (jaExisteNaLista) {
@@ -692,10 +791,11 @@ document.addEventListener('DOMContentLoaded', function () {
         listaInscricoes.push(inscricao);
       }
       atualizarContadoresCheckin();
+      atualizarBadgesDias(inscricao);
 
       mostrarResultadoCheckin(
         'ok',
-        'Entrada liberada ✓',
+        'Entrada liberada ✓ — ' + nomeDiaExibicao,
         inscricao.nome_completo + ' — ' + (NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso)
       );
     } finally {
