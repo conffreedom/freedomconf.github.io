@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 
 <!-- Estilos centralizados do projeto (mesmo arquivo do site público) -->
-<link rel="stylesheet" href="css/styles.css?v=4">
+<link rel="stylesheet" href="css/styles.css?v=5">
 
 <!-- Leitor de QR code pela câmera, usado na tela de Check-in -->
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -131,6 +131,19 @@
     <h1 class="heading">Portaria — Check-in</h1>
     <p class="sub">Aponte a câmera para o QR code do participante ou digite o código manualmente.</p>
 
+    <!-- Dia vigente da portaria: decide qual campo (checkin_sexta ou
+         checkin_sabado) cada leitura afeta. É detectado automaticamente
+         pela data do dispositivo, mas pode ser trocado manualmente aqui
+         — necessário em testes antes do evento ou para corrigir o
+         relógio do aparelho. Nunca lê os dois dias na mesma leitura. -->
+    <div class="dia-operacao" id="diaOperacaoBox">
+      <span class="dia-operacao-label">Dia vigente da portaria</span>
+      <div class="dia-toggle">
+        <button type="button" class="dia-btn" id="btnDiaSexta" data-dia="sexta">Sexta-feira</button>
+        <button type="button" class="dia-btn" id="btnDiaSabado" data-dia="sabado">Sábado</button>
+      </div>
+    </div>
+
     <!-- A biblioteca html5-qrcode injeta o player de câmera dentro desta div -->
     <div id="qr-reader"></div>
 
@@ -167,6 +180,6 @@
 <!-- 1) conexão com o Supabase; 2) lógica do painel administrativo -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js?v=2.0.0"></script>
-<script src="js/admin.js?v=2.1.0"></script>
+<script src="js/admin.js?v=2.2.0"></script>
 </body>
 </html>
