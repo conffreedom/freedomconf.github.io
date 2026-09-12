@@ -590,6 +590,11 @@ document.addEventListener('DOMContentLoaded', function () {
     try { checkinResultadoDetalhe.textContent = ''; } catch (e) { console.error('[admin.js] Falha ao limpar o detalhe do resultado:', e); }
     try { esconderBadgesDias(); } catch (e) { console.error('[admin.js] Falha ao esconder os badges de dia:', e); }
     try { codigoManualInput.value = ''; } catch (e) { console.error('[admin.js] Falha ao limpar o campo manual:', e); }
+    // Só define o dia vigente automaticamente na primeira vez que a
+    // portaria é aberta nesta sessão — se o operador já tiver trocado
+    // manualmente pelo seletor, essa escolha é respeitada ao reabrir
+    // a tela (ex.: voltou ao dashboard e voltou para a portaria).
+    try { definirDiaOperacao(diaOperacaoAtual || detectarDiaOperacaoPadrao()); } catch (e) { console.error('[admin.js] Falha ao definir o dia vigente da portaria:', e); }
 
     processandoCheckin = false;
     cooldownCameraAtivo = false;
@@ -689,24 +694,49 @@ document.addEventListener('DOMContentLoaded', function () {
     if (badgeSabado) badgeSabado.style.display = 'none';
   }
 
-  // Decide em qual dia registrar o check-in agora: se hoje for
-  // exatamente uma das datas do evento (e esse dia fizer parte do
-  // ingresso), usa esse dia. Fora das datas do evento — o caso mais
-  // comum sendo testes antes do evento — usa o primeiro dia
-  // aplicável que ainda estiver pendente. Devolve null quando todos
-  // os dias aplicáveis já foram concluídos.
-  function decidirDiaParaCheckin(inscricao) {
-    const aplicaveis = diasDoIngresso(inscricao.tipo_ingresso);
-    const hoje = obterDataHojeIso();
+  // ------------------------------------------------------------
+  // DIA VIGENTE DA PORTARIA (Sexta / Sábado)
+  // ------------------------------------------------------------
+  // O QR Code é único para o participante no evento inteiro — ele NÃO
+  // diz sozinho "qual dia" está sendo lido. Antes, o sistema inferia
+  // isso pegando "o primeiro dia do ingresso que ainda estava
+  // pendente", o que causava a QUEIMA INDEVIDA do Sábado: se o mesmo
+  // código Combo fosse lido duas vezes na Sexta, a segunda leitura
+  // encontrava "sexta" já feito e caía no Sábado.
+  //
+  // Agora a portaria opera sempre em relação a um "dia vigente"
+  // explícito (diaOperacaoAtual), e cada leitura só pode afetar ESSE
+  // dia — nunca outro. O dia vigente é detectado automaticamente pela
+  // data real do evento, mas o operador pode trocar manualmente pelo
+  // seletor na tela (necessário na fase de testes, antes do evento
+  // começar, ou para corrigir o relógio do dispositivo).
+  let diaOperacaoAtual = null; // 'sexta' | 'sabado'
 
-    if (hoje === DATA_SEXTA_ISO && aplicaveis.includes('sexta') && !inscricao.checkin_sexta) {
-      return 'sexta';
-    }
-    if (hoje === DATA_SABADO_ISO && aplicaveis.includes('sabado') && !inscricao.checkin_sabado) {
-      return 'sabado';
-    }
+  const btnDiaSexta = document.getElementById('btnDiaSexta');
+  const btnDiaSabado = document.getElementById('btnDiaSabado');
 
-    return aplicaveis.find(function (dia) { return !inscricao['checkin_' + dia]; }) || null;
+  // Fora das datas oficiais do evento (fase de testes) não existe um
+  // dia "óbvio" — aqui só damos um ponto de partida para a interface
+  // não abrir sem nenhum dia selecionado; o operador troca no seletor
+  // se precisar.
+  function detectarDiaOperacaoPadrao() {
+    return obterDataHojeIso() === DATA_SABADO_ISO ? 'sabado' : 'sexta';
+  }
+
+  // Aplica o dia vigente escolhido: guarda o estado e reflete no
+  // seletor visual (botão ativo). Chamada tanto pelo clique manual
+  // quanto pela inicialização automática ao abrir a portaria.
+  function definirDiaOperacao(dia) {
+    diaOperacaoAtual = dia;
+    if (btnDiaSexta) btnDiaSexta.classList.toggle('ativo', dia === 'sexta');
+    if (btnDiaSabado) btnDiaSabado.classList.toggle('ativo', dia === 'sabado');
+  }
+
+  if (btnDiaSexta) {
+    btnDiaSexta.addEventListener('click', function () { definirDiaOperacao('sexta'); });
+  }
+  if (btnDiaSabado) {
+    btnDiaSabado.addEventListener('click', function () { definirDiaOperacao('sabado'); });
   }
 
   function atualizarContadoresCheckin() {
@@ -773,18 +803,38 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      const diaParaCheckin = decidirDiaParaCheckin(inscricao);
+      const diaAtual = diaOperacaoAtual || detectarDiaOperacaoPadrao();
+      const nomeDiaAtual = diaAtual === 'sexta' ? 'Sexta-feira' : 'Sábado';
+      const aplicaveisIngresso = diasDoIngresso(inscricao.tipo_ingresso);
 
-      if (!diaParaCheckin) {
+      // O ingresso desta pessoa nem inclui o dia vigente da portaria
+      // (ex.: ingresso só de Sábado sendo lido num dia configurado
+      // como Sexta) — nunca "empurra" o check-in para outro dia.
+      if (!aplicaveisIngresso.includes(diaAtual)) {
         atualizarBadgesDias(inscricao);
-        mostrarResultadoCheckin('aviso', 'Check-in já realizado', inscricao.nome_completo + ' já entrou em todos os dias do ingresso.');
+        mostrarResultadoCheckin(
+          'aviso',
+          'Ingresso não inclui ' + nomeDiaAtual,
+          inscricao.nome_completo + ' possui ingresso de ' + (NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso) + ', que não dá acesso a ' + nomeDiaAtual + '. Confira o "Dia vigente da portaria" selecionado.'
+        );
         return;
       }
 
-      const nomeDiaExibicao = diaParaCheckin === 'sexta' ? 'Sexta-feira' : 'Sábado';
+      // TRAVA DE DUPLICIDADE: se o dia vigente já tiver sido
+      // registrado para este participante, apenas avisa — nunca
+      // altera o campo do outro dia (checkin_sexta / checkin_sabado).
+      if (inscricao['checkin_' + diaAtual]) {
+        atualizarBadgesDias(inscricao);
+        mostrarResultadoCheckin(
+          'aviso',
+          'Check-in de ' + nomeDiaAtual + ' já foi realizado',
+          'Atenção: o check-in de ' + nomeDiaAtual + ' já foi realizado para ' + inscricao.nome_completo + '. Nenhuma alteração foi feita.'
+        );
+        return;
+      }
 
       const camposParaAtualizar = {};
-      camposParaAtualizar['checkin_' + diaParaCheckin] = true;
+      camposParaAtualizar['checkin_' + diaAtual] = true;
       // Mantém "checkin_realizado" (usado pelo dashboard e pelos
       // contadores gerais) sempre em dia com os dois campos novos:
       // vira verdadeiro assim que QUALQUER um dos dias for concluído.
@@ -803,7 +853,7 @@ document.addEventListener('DOMContentLoaded', function () {
       // Reflete a mudança na cópia local para os contadores da
       // portaria e do dashboard ficarem corretos sem novo fetch (o
       // Realtime também vai confirmar essa mudança pouco depois).
-      inscricao['checkin_' + diaParaCheckin] = true;
+      inscricao['checkin_' + diaAtual] = true;
       inscricao.checkin_realizado = true;
       const jaExisteNaLista = listaInscricoes.some(function (i) { return String(i.id) === String(inscricao.id); });
       if (jaExisteNaLista) {
@@ -818,7 +868,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
       mostrarResultadoCheckin(
         'ok',
-        'Entrada liberada ✓ — ' + nomeDiaExibicao,
+        'Check-in de ' + nomeDiaAtual + ' Realizado com Sucesso!',
         inscricao.nome_completo + ' — ' + (NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso)
       );
     } finally {
