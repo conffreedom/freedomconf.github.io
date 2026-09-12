@@ -21,6 +21,9 @@
 <!-- "?v=2.0.0" força o navegador a buscar a versão nova sempre -->
 <!-- que o número da versão mudar, mesmo com cache antigo salvo. -->
 <link rel="stylesheet" href="css/styles.css?v=2.0.0">
+
+<!-- Gera a imagem do QR code exibida quando a inscrição consultada estiver aprovada -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 
@@ -58,6 +61,9 @@
     </div>
 
     <div><a class="btn btn-primary" href="#inscricao">Fazer inscrição</a></div>
+    <p style="margin-top:14px;">
+      <a href="#consulta" style="color:var(--bege); font-size:13px; text-decoration:underline;">Já se inscreveu? Consultar minha inscrição</a>
+    </p>
   </div>
 
   <div class="info-strip">
@@ -244,6 +250,80 @@
         Guarde este código para referência. Assim que o pagamento for aprovado, o QR code de entrada estará disponível na consulta do participante.
       </p>
       <button type="button" class="btn-line" style="margin-top:16px;" id="btnNovaInscricao">Fazer outra inscrição</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CONSULTAR INSCRIÇÃO ===================== -->
+<section id="consulta" style="background:var(--branco);">
+  <div class="insc-wrap">
+    <svg class="arco" width="300" height="72" viewBox="0 0 300 72">
+      <path id="arcConsulta" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
+      <text font-size="30"><textPath href="#arcConsulta" startOffset="50%" text-anchor="middle">FREEDOM CONF.</textPath></text>
+    </svg>
+    <h1 class="heading">Consultar minha inscrição</h1>
+    <p class="sub">Digite o e-mail usado na inscrição ou o código recebido (ex: FC2026-XXXXXX). Não usamos CPF em nenhuma etapa.</p>
+
+    <!-- Formulário de busca -->
+    <div class="form-card">
+      <div class="field">
+        <label for="campoBuscaInscricao">E-mail ou Código da Inscrição</label>
+        <input id="campoBuscaInscricao" placeholder="voce@email.com ou FC2026-XXXXXX" autocomplete="off" />
+      </div>
+      <button type="button" class="btn btn-primary" id="btnBuscarInscricao" style="width:100%; text-align:center;">Buscar inscrição</button>
+      <p id="erroBuscaInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+    </div>
+
+    <!-- Container onde js/main.js renderiza o resultado da busca -->
+    <div id="resultadoConsulta" style="display:none; margin-top:24px;">
+
+      <!-- Estado: pagamento ainda em análise -->
+      <div class="form-card" id="resultadoPendente" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">⏳</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="pendenteNome"></span>!</h2>
+        <span class="status-pendente-badge">Status: Aguardando Validação do Pix</span>
+        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
+          Sua inscrição (<span id="pendenteCombo"></span>) ainda está em análise. Assim que o pagamento for confirmado, o QR code de entrada aparecerá aqui, nesta mesma consulta.
+        </p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#777; margin-top:16px;">Código: <span id="pendenteCodigo"></span></p>
+      </div>
+
+      <!-- Estado: pagamento recusado -->
+      <div class="form-card" id="resultadoRecusado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">⚠️</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="recusadoNome"></span></h2>
+        <span class="badge fail" style="font-size:12px; padding:7px 16px;">Pagamento não confirmado</span>
+        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
+          Não conseguimos validar o comprovante enviado para a inscrição <span id="recusadoCodigo"></span>. Entre em contato pelo e-mail ou WhatsApp no rodapé para regularizar.
+        </p>
+      </div>
+
+      <!-- Estado: aprovado — mostra o QR code de entrada -->
+      <div class="form-card" id="resultadoAprovado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">✅</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="aprovadoNome"></span>!</h2>
+        <span class="badge ok" style="font-size:12px; padding:7px 16px;">Pagamento confirmado</span>
+        <p style="color:#555; font-size:14px; margin:14px 0 0;"><span id="aprovadoCombo"></span></p>
+
+        <div style="background:var(--cinza); border-radius:14px; padding:24px; display:inline-block; margin-top:18px;">
+          <div id="aprovadoQrcodeBox" style="background:var(--branco); padding:14px; border-radius:10px; display:inline-block;"></div>
+          <p style="font-size:12px; color:#777; margin:12px 0 4px;">Código da inscrição</p>
+          <p style="font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:700; color:var(--preto);" id="aprovadoCodigo"></p>
+        </div>
+
+        <p style="color:#555; font-size:13px; max-width:340px; margin:18px auto 0; line-height:1.6;">
+          Apresente este QR code (ou o código acima) na entrada do evento.
+        </p>
+      </div>
+
+      <!-- Estado: nada encontrado -->
+      <div class="form-card" id="resultadoNaoEncontrado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">🔍</div>
+        <h2 class="heading" style="margin:0 0 8px;">Nada encontrado</h2>
+        <p style="color:#555; font-size:14px; max-width:340px; margin:0 auto;">
+          Não encontramos nenhuma inscrição com esse e-mail ou código. Confira se digitou corretamente.
+        </p>
+      </div>
     </div>
   </div>
 </section>
