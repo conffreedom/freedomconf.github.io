@@ -197,8 +197,13 @@ document.addEventListener('DOMContentLoaded', function () {
     tabelaVazia.style.display = 'none';
 
     const linhasHtml = listaInscricoes.map(function (inscricao) {
+      // O bucket "comprovantes" agora é privado, então não existe
+      // mais uma URL pública fixa para linkar diretamente. Em vez
+      // de um <a href>, renderizamos um botão que, ao ser clicado,
+      // pede ao Supabase uma URL assinada válida por curto tempo
+      // (ver abrirComprovante() logo abaixo).
       const linkComprovante = inscricao.comprovante_url
-        ? '<a href="' + inscricao.comprovante_url + '" target="_blank" rel="noopener" class="btn-line" style="padding:4px 10px; font-size:11px;">Ver</a>'
+        ? '<button type="button" class="btn-line btn-ver-comprovante" data-comprovante="' + escaparHtml(inscricao.comprovante_url) + '" style="padding:4px 10px; font-size:11px;">Ver</button>'
         : '—';
 
       const checkinTexto = inscricao.checkin_realizado
@@ -250,6 +255,50 @@ document.addEventListener('DOMContentLoaded', function () {
     statCheckins.textContent = String(checkins.length);
   }
 
+  // Extrai só o caminho do arquivo dentro do bucket a partir do
+  // valor salvo em "comprovante_url". Como o bucket agora é
+  // privado, esse valor pode já estar salvo como caminho puro
+  // (ex.: "comprovante_123_456.jpg") ou, em registros mais antigos
+  // gravados quando o bucket ainda era público, como uma URL
+  // completa (".../object/public/comprovantes/comprovante_123_456.jpg").
+  // Esta função cobre os dois casos, sempre devolvendo só o caminho
+  // que createSignedUrl() espera receber.
+  function extrairCaminhoComprovante(valorSalvo) {
+    const marcador = '/comprovantes/';
+    const posicao = valorSalvo.indexOf(marcador);
+    if (posicao === -1) {
+      return valorSalvo; // já é só o caminho dentro do bucket
+    }
+    return valorSalvo.slice(posicao + marcador.length);
+  }
+
+  // Gera uma URL assinada temporária (válida por 60 segundos) para
+  // o comprovante e abre em uma nova aba. É gerada sob demanda, no
+  // momento do clique — nunca na renderização da tabela — porque
+  // uma URL assinada expira e não faria sentido deixá-la pronta
+  // "esperando" na página.
+  async function abrirComprovante(botao) {
+    const caminho = extrairCaminhoComprovante(botao.getAttribute('data-comprovante'));
+    const textoOriginal = botao.textContent;
+
+    botao.disabled = true;
+    botao.textContent = 'Abrindo...';
+
+    const { data, error } = await window.supabaseClient.storage
+      .from(window.SUPABASE_COMPROVANTES_BUCKET)
+      .createSignedUrl(caminho, 60);
+
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+
+    if (error || !data || !data.signedUrl) {
+      alert('Não foi possível abrir o comprovante. Tente novamente.');
+      return;
+    }
+
+    window.open(data.signedUrl, '_blank', 'noopener');
+  }
+
   // Delegação de evento: um único listener no <tbody> cobre todos
   // os <select> de status, mesmo os que ainda vão ser criados
   // depois de recarregar a tabela.
@@ -285,6 +334,15 @@ document.addEventListener('DOMContentLoaded', function () {
     atualizarEstatisticas();
   });
 
+  // Delegação separada (evento diferente) para o botão "Ver"
+  // comprovante — assim ele funciona mesmo depois que a tabela é
+  // recriada por renderizarTabela().
+  tabelaBody.addEventListener('click', function (evento) {
+    const botao = evento.target.closest('.btn-ver-comprovante');
+    if (!botao) return;
+    abrirComprovante(botao);
+  });
+
   btnAtualizarLista.addEventListener('click', carregarInscricoes);
 
   /* ----------------------------------------------------------
@@ -311,6 +369,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const cabecalho = ['Nome', 'E-mail', 'Telefone', 'Tipo de Ingresso', 'Valor', 'Status', 'Código', 'Link do Comprovante'];
 
     const linhas = listaInscricoes.map(function (i) {
+      // Como o bucket é privado, a URL antiga (quando existir) não
+      // abre sozinha num navegador — só o caminho do arquivo é
+      // útil aqui, para quem for gerar uma URL assinada depois a
+      // partir do painel ou do Supabase diretamente.
+      const caminhoComprovante = i.comprovante_url ? extrairCaminhoComprovante(i.comprovante_url) : '';
+
       return [
         celulaCsv(i.nome_completo),
         celulaCsv(i.email),
@@ -319,7 +383,7 @@ document.addEventListener('DOMContentLoaded', function () {
         celulaCsv(Number(i.valor_pago || 0).toFixed(2).replace('.', ',')),
         celulaCsv(NOMES_STATUS[i.status_pagamento] || i.status_pagamento),
         celulaCsv(i.codigo_ingresso),
-        celulaCsv(i.comprovante_url || ''),
+        celulaCsv(caminhoComprovante),
       ].join(',');
     });
 
