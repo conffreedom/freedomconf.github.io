@@ -218,8 +218,30 @@ footer a:hover{ color:var(--branco); }
 .resumo-voltar:hover{ color:var(--verde); }
 
 /* ================= LOGIN (admin) ================= */
-#login{ background:var(--preto); min-height:100vh; display:flex; align-items:center; justify-content:center; color:var(--branco);}
-.login-card{ width:100%; max-width:380px; background:#2E2E2E; border-radius:16px; padding:44px 36px; text-align:center;}
+/* O elemento #login também é alternado pelo js/admin.js via
+   "tela.style.display = 'block'/'none'" (estilo inline, para
+   garantir que a tela escondida fique 100% oculta mesmo com CSS
+   em cache). Um estilo inline sempre vence uma regra normal de
+   CSS — por isso "display:flex" aqui precisa de "!important": é a
+   única forma da folha de estilos continuar no controle do layout
+   (centralização) quando a tela está com display:block vindo do
+   JS. "min-height:100dvh" (Dynamic Viewport Height) evita o "vão"
+   no rodapé em navegadores mobile, onde 100vh costuma incluir a
+   área coberta pela barra de endereço; "100vh" antes dela é só um
+   fallback para navegadores mais antigos, que ignoram "dvh". */
+#login{
+  background:var(--preto);
+  min-height:100vh;
+  min-height:100dvh;
+  display:flex !important;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  box-sizing:border-box;
+  color:var(--branco);
+}
+.login-card{ width:100%; max-width:400px; background:#2E2E2E; border-radius:16px; padding:44px 36px; text-align:center; box-sizing:border-box;}
 .login-card .arco{ color:var(--bege); margin-bottom:20px;}
 .login-card h1{ font-size:22px; margin:0 0 6px; font-family:'Poppins',sans-serif;}
 .login-card .sub{ color:#9A9A9A; font-size:13px; margin-bottom:28px;}
