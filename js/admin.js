@@ -2,12 +2,15 @@
    js/admin.js
    ------------------------------------------------------------
    Lógica do PAINEL ADMINISTRATIVO (admin.html):
-     1) Login / logout via Supabase Auth, com proteção de acesso;
-     2) Dashboard: contadores, tabela de inscrições e alteração
-        de status de pagamento;
+     1) Login / logout via Supabase Auth, com proteção de acesso
+        e alternância de visibilidade da senha;
+     2) Dashboard: contadores, busca/filtro e tabela de
+        inscrições com alteração de status de pagamento,
+        atualizada em tempo real via Supabase Realtime;
      3) Exportação da lista em CSV para o financeiro;
-     4) Portaria / Check-in: leitura de QR code pela câmera e
-        validação manual do código do ingresso.
+     4) Portaria / Check-in: leitura de QR code pela câmera (com
+        cooldown contra leituras repetidas) e validação manual do
+        código do ingresso.
 
    Depende de:
      - js/supabase-client.js (expõe window.supabaseClient),
@@ -27,12 +30,18 @@ document.addEventListener('DOMContentLoaded', function () {
   const telaDashboard = document.getElementById('dashboard');
   const telaCheckin = document.getElementById('checkin');
 
-  // Alterna qual das 3 telas fica visível, usando a classe
-  // ".active" já definida em css/styles.css.
+  // Alterna qual das 3 telas fica visível. Além de ligar/desligar a
+  // classe ".active" (usada pela animação de entrada em
+  // css/styles.css), também força "display" diretamente no estilo
+  // inline de cada tela — isso garante que a tela escondida fique
+  // SEMPRE completamente oculta (display:none), mesmo que o CSS
+  // externo ainda não tenha carregado ou esteja com cache antigo.
   function mostrarTela(idTela) {
     [telaLogin, telaDashboard, telaCheckin].forEach(function (tela) {
       if (!tela) return;
-      tela.classList.toggle('active', tela.id === idTela);
+      const estaAtiva = tela.id === idTela;
+      tela.classList.toggle('active', estaAtiva);
+      tela.style.display = estaAtiva ? 'block' : 'none';
     });
   }
 
@@ -55,6 +64,40 @@ document.addEventListener('DOMContentLoaded', function () {
     erroLogin.style.display = 'none';
     erroLogin.textContent = '';
   }
+
+  // Cria o botão de "mostrar/ocultar senha" (ícone de olho) e o
+  // insere dentro do próprio campo de senha, sem depender de nenhum
+  // elemento novo no HTML. Envolve só o <input> (não o .field
+  // inteiro, que também contém o <label>) num wrapper relativo, para
+  // o botão ficar posicionado exatamente em cima do campo.
+  function configurarToggleSenha() {
+    if (!loginSenha || document.getElementById('btnMostrarSenha')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'relative';
+    loginSenha.parentNode.insertBefore(wrapper, loginSenha);
+    wrapper.appendChild(loginSenha);
+
+    loginSenha.style.paddingRight = '42px';
+
+    const botao = document.createElement('button');
+    botao.type = 'button';
+    botao.id = 'btnMostrarSenha';
+    botao.setAttribute('aria-label', 'Mostrar senha');
+    botao.textContent = '👁️';
+    botao.style.cssText =
+      'position:absolute; right:8px; top:50%; transform:translateY(-50%); ' +
+      'background:none; border:none; cursor:pointer; font-size:15px; padding:6px; line-height:1;';
+    wrapper.appendChild(botao);
+
+    botao.addEventListener('click', function () {
+      const estaOculta = loginSenha.type === 'password';
+      loginSenha.type = estaOculta ? 'text' : 'password';
+      botao.textContent = estaOculta ? '🙈' : '👁️';
+      botao.setAttribute('aria-label', estaOculta ? 'Ocultar senha' : 'Mostrar senha');
+    });
+  }
+  configurarToggleSenha();
 
   async function fazerLogin() {
     esconderErroLogin();
@@ -96,8 +139,12 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  // Encerra a sessão, para a câmera (se estiver ligada), cancela a
+  // inscrição do Realtime e volta para a tela de login — chamada
+  // tanto pelo botão "Sair" do dashboard quanto pelo da portaria.
   async function fazerLogout() {
     pararScannerCamera();
+    pararRealtime();
     await window.supabaseClient.auth.signOut();
     listaInscricoes = [];
     mostrarTela('login');
@@ -138,9 +185,9 @@ document.addEventListener('DOMContentLoaded', function () {
   };
 
   // Cache local dos dados carregados. É usada pela tabela, pelos
-  // contadores, pela exportação em CSV e pelo check-in (para
-  // manter os contadores da portaria coerentes com o dashboard
-  // sem precisar buscar tudo de novo a cada leitura de QR code).
+  // contadores, pela busca/filtro, pela exportação em CSV e pelo
+  // check-in (para manter os contadores da portaria coerentes com
+  // o dashboard sem precisar buscar tudo de novo a cada leitura).
   let listaInscricoes = [];
 
   function formatarMoeda(valor) {
@@ -156,6 +203,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     mostrarTela('dashboard');
     await carregarInscricoes();
+    iniciarRealtime();
   }
 
   async function carregarInscricoes() {
@@ -186,22 +234,79 @@ document.addEventListener('DOMContentLoaded', function () {
     return '<span class="badge ' + classe + '">' + (NOMES_STATUS[status] || status) + '</span>';
   }
 
+  /* ----------------------------------------------------------
+     2.1) BUSCA / FILTRO DA TABELA
+     ---------------------------------------------------------- */
+
+  // Campo de busca criado dinamicamente (não existe no admin.html
+  // original) e inserido logo acima da tabela. Filtra por nome,
+  // e-mail, código ou status — tudo em memória, sobre os dados já
+  // carregados, sem precisar de uma nova consulta ao Supabase.
+  let campoFiltroTabela = null;
+  let termoFiltroAtual = '';
+
+  function criarCampoFiltro() {
+    const wrapTabela = document.querySelector('.tabela-wrap');
+    if (!wrapTabela || document.getElementById('campoFiltroTabela')) return;
+
+    const container = document.createElement('div');
+    container.style.marginBottom = '14px';
+
+    campoFiltroTabela = document.createElement('input');
+    campoFiltroTabela.type = 'text';
+    campoFiltroTabela.id = 'campoFiltroTabela';
+    campoFiltroTabela.placeholder = 'Buscar por nome, e-mail, código ou status...';
+    campoFiltroTabela.autocomplete = 'off';
+    campoFiltroTabela.style.cssText =
+      'width:100%; padding:12px 14px; border-radius:9px; border:1.5px solid var(--cinza); ' +
+      'font-size:14px; font-family:\'Inter\',sans-serif; box-sizing:border-box;';
+
+    container.appendChild(campoFiltroTabela);
+    wrapTabela.parentNode.insertBefore(container, wrapTabela);
+
+    campoFiltroTabela.addEventListener('input', function () {
+      termoFiltroAtual = campoFiltroTabela.value.trim().toLowerCase();
+      renderizarTabela();
+    });
+  }
+
+  // Monta uma única string com todos os campos pesquisáveis de uma
+  // inscrição, em minúsculas, para comparar contra o termo digitado.
+  function textoPesquisavel(inscricao) {
+    return [
+      inscricao.nome_completo,
+      inscricao.email,
+      inscricao.telefone,
+      inscricao.codigo_ingresso,
+      NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso,
+      NOMES_STATUS[inscricao.status_pagamento] || inscricao.status_pagamento,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  }
+
   function renderizarTabela() {
-    if (listaInscricoes.length === 0) {
+    const listaExibida = termoFiltroAtual
+      ? listaInscricoes.filter(function (i) { return textoPesquisavel(i).includes(termoFiltroAtual); })
+      : listaInscricoes;
+
+    if (listaExibida.length === 0) {
       tabelaBody.innerHTML = '';
-      tabelaVazia.textContent = 'Nenhuma inscrição encontrada.';
+      tabelaVazia.textContent = termoFiltroAtual
+        ? 'Nenhuma inscrição encontrada para "' + campoFiltroTabela.value.trim() + '".'
+        : 'Nenhuma inscrição encontrada.';
       tabelaVazia.style.display = 'block';
       return;
     }
 
     tabelaVazia.style.display = 'none';
 
-    const linhasHtml = listaInscricoes.map(function (inscricao) {
-      // O bucket "comprovantes" agora é privado, então não existe
-      // mais uma URL pública fixa para linkar diretamente. Em vez
-      // de um <a href>, renderizamos um botão que, ao ser clicado,
-      // pede ao Supabase uma URL assinada válida por curto tempo
-      // (ver abrirComprovante() logo abaixo).
+    const linhasHtml = listaExibida.map(function (inscricao) {
+      // O bucket "comprovantes" é privado, então não existe uma URL
+      // pública fixa para linkar diretamente. Em vez de um <a href>,
+      // renderizamos um botão que, ao ser clicado, pede ao Supabase
+      // uma URL assinada válida por curto tempo (abrirComprovante()).
       const linkComprovante = inscricao.comprovante_url
         ? '<button type="button" class="btn-line btn-ver-comprovante" data-comprovante="' + escaparHtml(inscricao.comprovante_url) + '" style="padding:4px 10px; font-size:11px;">Ver</button>'
         : '—';
@@ -241,6 +346,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function atualizarEstatisticas() {
+    // Os contadores sempre refletem TODAS as inscrições, mesmo com
+    // um filtro de busca ativo na tabela — são números do evento
+    // como um todo, não da busca no momento.
     const total = listaInscricoes.length;
     const aprovados = listaInscricoes.filter(function (i) { return i.status_pagamento === 'aprovado'; });
     const pendentes = listaInscricoes.filter(function (i) { return i.status_pagamento === 'pendente'; });
@@ -327,7 +435,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Atualiza a cópia local e a linha inteira (para o badge e os
     // contadores acompanharem a mudança sem precisar recarregar
-    // tudo do zero).
+    // tudo do zero). O Realtime também vai receber esse UPDATE, mas
+    // atualizar localmente já deixa a resposta instantânea para
+    // quem clicou, sem esperar o round-trip do evento.
     const inscricao = listaInscricoes.find(function (i) { return String(i.id) === String(id); });
     if (inscricao) inscricao.status_pagamento = novoStatus;
     renderizarTabela();
@@ -344,6 +454,54 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   btnAtualizarLista.addEventListener('click', carregarInscricoes);
+
+  /* ----------------------------------------------------------
+     2.2) TEMPO REAL (Supabase Realtime)
+     ---------------------------------------------------------- */
+
+  // Canal do Realtime — mantido numa variável de módulo para poder
+  // ser cancelado no logout (evita ficar recebendo eventos de uma
+  // sessão que já terminou).
+  let canalRealtime = null;
+
+  // Evita recarregar a lista inteira várias vezes seguidas quando
+  // chegam vários eventos em sequência rápida (ex.: uma edição em
+  // lote no banco) — agrupa tudo numa única atualização, 500ms
+  // depois do último evento recebido.
+  let timeoutRealtime = null;
+  function agendarRecarga() {
+    clearTimeout(timeoutRealtime);
+    timeoutRealtime = setTimeout(function () {
+      carregarInscricoes();
+    }, 500);
+  }
+
+  function iniciarRealtime() {
+    if (canalRealtime) return; // já está escutando
+
+    canalRealtime = window.supabaseClient
+      .channel('inscricoes-admin-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inscricoes' },
+        function () {
+          // Qualquer INSERT/UPDATE/DELETE na tabela recarrega a
+          // lista, para o dashboard nunca ficar desatualizado sem
+          // precisar de F5 — útil, por exemplo, quando duas pessoas
+          // da equipe usam o painel ao mesmo tempo.
+          agendarRecarga();
+        }
+      )
+      .subscribe();
+  }
+
+  function pararRealtime() {
+    clearTimeout(timeoutRealtime);
+    if (canalRealtime) {
+      window.supabaseClient.removeChannel(canalRealtime);
+      canalRealtime = null;
+    }
+  }
 
   /* ----------------------------------------------------------
      3) EXPORTAÇÃO EM CSV (para o financeiro)
@@ -412,6 +570,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
   btnIrCheckin.addEventListener('click', function () {
     mostrarTela('checkin');
+    // Começa a portaria "limpa": sem resultado de leitura anterior
+    // na tela e sem nenhum código digitado sobrando no campo manual.
+    checkinResultado.className = 'checkin-resultado';
+    checkinResultadoTitulo.textContent = '';
+    checkinResultadoDetalhe.textContent = '';
+    codigoManualInput.value = '';
+    processandoCheckin = false;
+    cooldownCameraAtivo = false;
     atualizarContadoresCheckin();
     iniciarScannerCamera();
   });
@@ -450,13 +616,23 @@ document.addEventListener('DOMContentLoaded', function () {
     checkinResultadoDetalhe.textContent = detalhe;
   }
 
-  // Evita que o mesmo código seja processado duas vezes seguidas
-  // muito rápido (ex.: a câmera detecta o mesmo QR em vários
-  // frames antes do resultado anterior sumir da tela).
+  // Evita que uma segunda leitura (manual ou por câmera) seja
+  // processada enquanto a primeira ainda está em andamento.
   let processandoCheckin = false;
 
-  async function processarCodigo(codigoDigitado) {
+  // Cooldown específico do LEITOR DE CÂMERA: depois de qualquer
+  // leitura, a câmera fica "surda" por alguns segundos antes de
+  // aceitar uma nova leitura automática. Isso evita que o mesmo QR
+  // code (ainda visível no enquadramento) seja lido várias vezes em
+  // sequência rapidíssima enquanto o resultado é exibido na tela —
+  // a validação manual (botão "Validar") NÃO é afetada por este
+  // cooldown, já que ali a intenção de repetir é sempre explícita.
+  let cooldownCameraAtivo = false;
+  const DURACAO_COOLDOWN_CAMERA_MS = 4000; // 4 segundos
+
+  async function processarCodigo(codigoDigitado, viaCamera) {
     if (processandoCheckin) return;
+    if (viaCamera && cooldownCameraAtivo) return;
 
     const codigo = (codigoDigitado || '').trim().toUpperCase();
     if (!codigo) {
@@ -504,7 +680,8 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // Reflete a mudança na cópia local para os contadores da
-      // portaria e do dashboard ficarem corretos sem novo fetch.
+      // portaria e do dashboard ficarem corretos sem novo fetch (o
+      // Realtime também vai confirmar essa mudança pouco depois).
       inscricao.checkin_realizado = true;
       const jaExisteNaLista = listaInscricoes.some(function (i) { return String(i.id) === String(inscricao.id); });
       if (jaExisteNaLista) {
@@ -526,15 +703,25 @@ document.addEventListener('DOMContentLoaded', function () {
       btnValidarManual.disabled = false;
       codigoManualInput.value = '';
       codigoManualInput.focus();
+
+      // Só a câmera entra em cooldown — a validação manual pode ser
+      // repetida imediatamente, caso o operador precise corrigir e
+      // digitar outro código em seguida.
+      if (viaCamera) {
+        cooldownCameraAtivo = true;
+        setTimeout(function () {
+          cooldownCameraAtivo = false;
+        }, DURACAO_COOLDOWN_CAMERA_MS);
+      }
     }
   }
 
   btnValidarManual.addEventListener('click', function () {
-    processarCodigo(codigoManualInput.value);
+    processarCodigo(codigoManualInput.value, false);
   });
 
   codigoManualInput.addEventListener('keydown', function (evento) {
-    if (evento.key === 'Enter') processarCodigo(codigoManualInput.value);
+    if (evento.key === 'Enter') processarCodigo(codigoManualInput.value, false);
   });
 
   /* ----------------------------------------------------------
@@ -559,10 +746,12 @@ document.addEventListener('DOMContentLoaded', function () {
         { facingMode: 'environment' },
         configuracao,
         function aoLerCodigo(textoDecodificado) {
-          // Pausa a câmera enquanto o código lido é validado no
-          // banco, para não disparar o mesmo scan várias vezes.
-          if (scannerCamera && !processandoCheckin) {
-            processarCodigo(textoDecodificado);
+          // Bloqueado tanto pelo "processandoCheckin" (leitura em
+          // andamento) quanto pelo cooldown da câmera (leitura
+          // recém-concluída) — impede o loop de leituras repetidas
+          // do mesmo código enquanto ele continua no enquadramento.
+          if (scannerCamera && !processandoCheckin && !cooldownCameraAtivo) {
+            processarCodigo(textoDecodificado, true);
           }
         },
         function aoFalharLeitura() {
@@ -581,6 +770,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function pararScannerCamera() {
+    cooldownCameraAtivo = false;
     if (!scannerCamera) return;
     scannerCamera
       .stop()
@@ -602,11 +792,14 @@ document.addEventListener('DOMContentLoaded', function () {
   window.supabaseClient.auth.onAuthStateChange(function (evento, sessao) {
     if (evento === 'SIGNED_OUT') {
       pararScannerCamera();
+      pararRealtime();
       mostrarTela('login');
     }
   });
 
   (async function verificarSessaoInicial() {
+    criarCampoFiltro();
+
     const { data } = await window.supabaseClient.auth.getSession();
     if (data && data.session) {
       await iniciarDashboard(data.session);
