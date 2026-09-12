@@ -166,12 +166,23 @@ footer a:hover{ color:var(--branco); }
 
 /* ================= INSCRIÇÃO ================= */
 
-/* ---- barra fixa no topo do inscricao.html com o botão de voltar ---- */
+/* ---- navbar flutuante do inscricao.html: fica grudada no topo ao
+   rolar a tela, com fundo translúcido e desfoque (glassmorphism) ---- */
 .pagina-voltar-bar{
-  padding:18px 24px; display:flex; align-items:center;
-  background:var(--branco); border-bottom:1px solid var(--cinza);
+  position:sticky; top:0; z-index:100;
+  padding:14px 24px; display:flex; align-items:center;
+  background:rgba(251,250,247,.7);
+  -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(217,217,217,.55);
 }
-.pagina-voltar-bar .btn-line{ padding:8px 16px; font-size:12.5px; }
+/* botão "← Voltar" minimalista: sem borda/pílula, só o link limpo */
+.btn-voltar-limpo{
+  padding:6px 4px; font-size:13.5px; font-weight:600;
+  font-family:'Poppins',sans-serif; color:var(--verde);
+  text-decoration:none; display:inline-flex; align-items:center; gap:4px;
+  transition:color .15s ease;
+}
+.btn-voltar-limpo:hover{ color:var(--verde-dark); text-decoration:underline; }
 
 #inscricao{ background:var(--cinza); }
 .insc-wrap{ max-width:640px; margin:0 auto; padding:70px 24px 90px; text-align:center; }
@@ -390,11 +401,15 @@ tbody tr:hover{ background:#F6F5F2; }
 
 /* ================= SCROLL REVEAL (fade-in ao rolar) =================
    Classes puras: js/main.js só alterna ".visivel" via
-   IntersectionObserver conforme a seção entra na tela — toda a
-   animação em si (opacity + transform) fica aqui no CSS. */
+   IntersectionObserver conforme o elemento entra na tela — toda a
+   animação em si (opacity + transform) fica aqui no CSS.
+   Aplicada aos TEXTOS/CONTEÚDOS internos (títulos, parágrafos,
+   linhas de programação) — os blocos/cards visuais (faixa de infos,
+   card do mapa, cards de programação, rodapé) ficam sempre visíveis
+   desde o carregamento da página. */
 .fade-in-section{
-  opacity:0; transform:translateY(28px);
-  transition:opacity .7s ease, transform .7s ease;
+  opacity:0; transform:translateY(18px);
+  transition:opacity .6s ease, transform .6s ease;
 }
 .fade-in-section.visivel{ opacity:1; transform:translateY(0); }
 
@@ -412,16 +427,49 @@ tbody tr:hover{ background:#F6F5F2; }
   .details-grid, .prog-cols, .footer-grid{ grid-template-columns:1fr; }
   table{ font-size:12px; }
 
-  /* ---- menu mobile: esconde a nav e mostra o hambúrguer ---- */
-  .menu-toggle{ display:flex; }
+  /* ---- menu mobile: gaveta lateral (off-canvas) saindo da direita ---- */
+  .menu-toggle{ display:flex; position:relative; z-index:30; }
+
+  /* Fica sempre "montada" fora da tela (translateX 100%) para a
+     transição deslizar suavemente — display:none não anima. */
   #home .topbar nav{
-    display:none; position:absolute; top:100%; left:0; right:0;
+    display:flex; position:fixed; top:0; right:0; bottom:0;
+    width:min(78vw, 300px); z-index:25;
     flex-direction:column; align-items:stretch; gap:4px;
-    background:var(--verde-dark); padding:14px 20px 20px; z-index:20;
+    background:var(--verde-dark); padding:90px 26px 26px; overflow-y:auto;
+    transform:translateX(100%);
+    transition:transform .32s cubic-bezier(.22,.68,0,1.01);
+    box-shadow:-10px 0 34px rgba(0,0,0,.35);
   }
-  #home .topbar nav.aberto{ display:flex; }
-  #home .topbar nav a{ margin-left:0; padding:12px 4px; border-bottom:1px solid rgba(203,199,183,.15); }
+  #home .topbar nav.aberto{ transform:translateX(0); }
+
+  /* Camada escura por trás da gaveta, só para dar profundidade —
+     como não há JS ouvindo cliques nela, ela não fecha o menu ao
+     ser tocada (fechar continua pelo botão ou por um link do menu). */
+  .menu-backdrop{
+    position:fixed; inset:0; z-index:20;
+    background:rgba(3,45,31,.55);
+    opacity:0; pointer-events:none;
+    transition:opacity .32s ease;
+  }
+  #home .topbar nav.aberto ~ .menu-backdrop{ opacity:1; }
+
+  #home .topbar nav a{
+    margin-left:0; padding:13px 14px; border-radius:8px;
+    border-bottom:1px solid rgba(203,199,183,.15);
+  }
   #home .topbar nav a:last-child{ border-bottom:none; }
+
+  /* Destaque com brilho leve no link da seção em que o usuário está
+     navegando (hover/foco também recebem o mesmo brilho, já que no
+     celular o "estado atual" é sinalizado pelo toque/foco). */
+  #home .topbar nav a:hover,
+  #home .topbar nav a:focus-visible,
+  #home .topbar nav a.ativo{
+    color:var(--branco); background:rgba(203,199,183,.08);
+    box-shadow:0 0 16px rgba(160,214,181,.55), inset 0 0 0 1px rgba(160,214,181,.4);
+  }
+
   #home .topbar nav .nav-cta-secundario,
   #home .topbar nav .nav-cta-primario{
     margin-left:0; margin-top:8px; text-align:center; border-bottom:none;
