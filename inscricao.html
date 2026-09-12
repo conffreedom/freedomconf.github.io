@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- Prevenção contra cache do navegador: garante que o inscrito -->
+<!-- sempre veja a versão mais recente do formulário/consulta. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
+<title>Inscrição — Freedom Conf. 2026</title>
+<meta name="description" content="Faça sua inscrição na Freedom Conf. 2026 ou consulte sua credencial e QR code de entrada." />
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!-- Estilos centralizados do projeto (mesmo arquivo da Landing Page e do admin) -->
+<link rel="stylesheet" href="css/styles.css?v=6">
+
+<!-- Gera a imagem do QR code exibida quando a inscrição consultada estiver aprovada -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+<div class="pagina-voltar-bar">
+  <a class="btn-line" href="index.html">← Voltar para a página inicial</a>
+</div>
+
+<!-- ===================== INSCRIÇÃO ===================== -->
+<section id="inscricao">
+  <div class="insc-wrap">
+    <svg class="arco" width="300" height="72" viewBox="0 0 300 72">
+      <path id="arcInsc" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
+      <text font-size="30"><textPath href="#arcInsc" startOffset="50%" text-anchor="middle">FREEDOM CONF.</textPath></text>
+    </svg>
+    <h1 class="heading">Escolha sua opção</h1>
+    <p class="sub">Selecione o ingresso, pague via Pix e envie o comprovante.</p>
+
+    <div class="combos" id="combos">
+      <div class="combo" data-id="SEXTA" data-preco="20.00">
+        <span class="badge-check"></span>
+        <div class="dia">Sexta-feira</div>
+        <span class="detalhe">30/10 · a partir das 20h</span>
+        <div class="preco">R$ 20,00<small>/pessoa</small></div>
+      </div>
+      <div class="combo" data-id="SABADO" data-preco="20.00">
+        <span class="badge-check"></span>
+        <div class="dia">Sábado</div>
+        <span class="detalhe">31/10 · a partir das 14h</span>
+        <div class="preco">R$ 20,00<small>/pessoa</small></div>
+      </div>
+      <div class="combo" data-id="COMBO" data-preco="25.00" data-selected="true">
+        <span class="badge-check"></span>
+        <div class="dia">Sexta + Sábado</div>
+        <span class="detalhe">Os dois dias do evento</span>
+        <div class="preco">R$ 25,00<small>/pessoa</small></div>
+      </div>
+    </div>
+
+    <!-- Passo 1: dados da inscrição, chave Pix para pagamento e upload do comprovante -->
+    <div class="form-card" id="formInscricao">
+      <div class="field">
+        <label for="campoNome">Nome completo</label>
+        <input id="campoNome" placeholder="Seu nome" autocomplete="name" />
+      </div>
+      <div class="field">
+        <label for="campoEmail">E-mail</label>
+        <input id="campoEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="campoTelefone">Telefone</label>
+        <input id="campoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="numeric" maxlength="15" />
+      </div>
+
+      <div class="total-row">
+        <span>Total a pagar<br><span class="pay-icons">
+          <span class="pay-chip">PIX</span>
+        </span></span>
+        <strong id="totalValor">R$ 25,00</strong>
+      </div>
+
+      <!-- Chave Pix exibida para o participante pagar antes de anexar o comprovante -->
+      <div class="pix-key-box">
+        <p class="pix-key-label">Pague com a chave Pix (e-mail)</p>
+        <div class="pix-key-row">
+          <p class="pix-key-valor" id="chavePixTexto">pixpenielguaruja@hotmail.com</p>
+          <button type="button" class="btn-copiar-pix" id="btnCopiarPix">Copiar Chave Pix</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="campoComprovante">Comprovante do Pix (imagem ou PDF)</label>
+        <input id="campoComprovante" type="file" accept="image/*,application/pdf" />
+        <span class="erro-campo" id="erroComprovante" style="display:none;"></span>
+      </div>
+
+      <a class="btn btn-primary" id="btnIrPagamento">Continuar</a>
+      <p id="erroInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+    </div>
+
+    <!-- Passo 2: resumo do pedido antes do envio final -->
+    <div class="form-card resumo-pedido" id="resumoPedido" style="display:none;">
+      <button type="button" class="resumo-voltar" id="btnVoltarResumo">← Voltar</button>
+      <h2>Confirme sua inscrição</h2>
+      <div class="resumo-linhas">
+        <div class="resumo-linha"><span>Nome</span><b id="resumoNomeTxt"></b></div>
+        <div class="resumo-linha"><span>Opção</span><b id="resumoComboTxt"></b></div>
+        <div class="resumo-linha"><span>Comprovante</span><b id="resumoComprovanteTxt">anexado</b></div>
+        <div class="resumo-linha destaque"><span>Total pago via Pix</span><b id="resumoValorTxt"></b></div>
+      </div>
+      <button type="button" class="btn-pix" id="btnConfirmarInscricao">💠 Confirmar inscrição</button>
+      <p id="erroResumo" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+    </div>
+
+    <!-- Passo 3: sucesso — pagamento ainda pendente de conferência manual -->
+    <div class="form-card" id="telaSucesso" style="display:none; text-align:center;">
+      <div style="font-size:36px; margin-bottom:10px;">⏳</div>
+      <h2 class="heading" style="margin:0 0 10px;">Inscrição enviada!</h2>
+      <span class="status-pendente-badge">Status: Aguardando Validação do Pix</span>
+
+      <p style="color:#555; font-size:14.5px; line-height:1.6; max-width:400px; margin:18px auto 22px;">
+        Recebemos os seus dados e o comprovante do Pix, <span id="nomeSucesso"></span>. Nossa equipe confere os pagamentos em até 24 horas.
+      </p>
+
+      <div style="background:var(--cinza); border-radius:14px; padding:24px; display:inline-block;">
+        <div id="comboSucesso" style="font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; color:var(--verde); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px;"></div>
+        <p style="font-size:12px; color:#777; margin:0 0 4px;">Código da inscrição</p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700; color:var(--preto); letter-spacing:1px; margin:0;" id="codigoSucesso"></p>
+      </div>
+
+      <p style="color:#555; font-size:13.5px; max-width:380px; margin:22px auto 0; line-height:1.6;">
+        Guarde este código para referência. Assim que o pagamento for aprovado, o QR code de entrada estará disponível na consulta do participante.
+      </p>
+      <button type="button" class="btn-line" style="margin-top:16px;" id="btnNovaInscricao">Fazer outra inscrição</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CONSULTAR INSCRIÇÃO / CREDENCIAL ===================== -->
+<section id="buscar" style="background:var(--branco);">
+  <div class="insc-wrap">
+    <svg class="arco" width="300" height="72" viewBox="0 0 300 72">
+      <path id="arcConsulta" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
+      <text font-size="30"><textPath href="#arcConsulta" startOffset="50%" text-anchor="middle">FREEDOM CONF.</textPath></text>
+    </svg>
+    <h1 class="heading">Consultar minha inscrição</h1>
+    <p class="sub">Digite o e-mail usado na inscrição ou o código recebido (ex: FC2026-XXXXXX). Não usamos CPF em nenhuma etapa.</p>
+
+    <!-- Formulário de busca -->
+    <div class="form-card">
+      <div class="field">
+        <label for="campoBuscaInscricao">E-mail ou Código da Inscrição</label>
+        <input id="campoBuscaInscricao" placeholder="voce@email.com ou FC2026-XXXXXX" autocomplete="off" />
+      </div>
+      <button type="button" class="btn btn-primary" id="btnBuscarInscricao" style="width:100%; text-align:center;">Buscar inscrição</button>
+      <p id="erroBuscaInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+    </div>
+
+    <!-- Container onde js/inscricao.js renderiza o resultado da busca -->
+    <div id="resultadoConsulta" style="display:none; margin-top:24px;">
+
+      <!-- Estado: pagamento ainda em análise -->
+      <div class="form-card" id="resultadoPendente" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">⏳</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="pendenteNome"></span>!</h2>
+        <span class="status-pendente-badge">Status: Aguardando Validação do Pix</span>
+        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
+          Sua inscrição (<span id="pendenteCombo"></span>) ainda está em análise. Assim que o pagamento for confirmado, o QR code de entrada aparecerá aqui, nesta mesma consulta.
+        </p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#777; margin-top:16px;">Código: <span id="pendenteCodigo"></span></p>
+      </div>
+
+      <!-- Estado: pagamento recusado -->
+      <div class="form-card" id="resultadoRecusado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">⚠️</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="recusadoNome"></span></h2>
+        <span class="badge fail" style="font-size:12px; padding:7px 16px;">Pagamento não confirmado</span>
+        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
+          Não conseguimos validar o comprovante enviado para a inscrição <span id="recusadoCodigo"></span>. Entre em contato pelo e-mail ou WhatsApp no rodapé para regularizar.
+        </p>
+      </div>
+
+      <!-- Estado: aprovado — mostra a credencial com o QR code de entrada -->
+      <div class="form-card" id="resultadoAprovado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">✅</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="aprovadoNome"></span>!</h2>
+        <span class="badge ok" style="font-size:12px; padding:7px 16px;">Pagamento confirmado</span>
+        <p style="color:#555; font-size:14px; margin:14px 0 0;"><span id="aprovadoCombo"></span></p>
+
+        <div style="background:var(--cinza); border-radius:14px; padding:24px; display:inline-block; margin-top:18px;">
+          <div id="aprovadoQrcodeBox" style="background:var(--branco); padding:14px; border-radius:10px; display:inline-block;"></div>
+          <p style="font-size:12px; color:#777; margin:12px 0 4px;">Código da inscrição</p>
+          <p style="font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:700; color:var(--preto);" id="aprovadoCodigo"></p>
+        </div>
+
+        <p style="color:#555; font-size:13px; max-width:340px; margin:18px auto 0; line-height:1.6;">
+          Apresente este QR code (ou o código acima) na entrada do evento.
+        </p>
+      </div>
+
+      <!-- Estado: nada encontrado -->
+      <div class="form-card" id="resultadoNaoEncontrado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">🔍</div>
+        <h2 class="heading" style="margin:0 0 8px;">Nada encontrado</h2>
+        <p style="color:#555; font-size:14px; max-width:340px; margin:0 auto;">
+          Não encontramos nenhuma inscrição com esse e-mail ou código. Confira se digitou corretamente.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 1) conexão com o Supabase; 2) lógica do portal de inscrição -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js?v=2.0.0"></script>
+<script src="js/inscricao.js?v=1.0.0"></script>
+</body>
+</html>
