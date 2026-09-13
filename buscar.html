@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- Prevenção contra cache do navegador: garante que o participante -->
+<!-- sempre veja a versão mais recente da consulta/credencial. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
+<title>Minha Credencial — Freedom Conf. 2026</title>
+<meta name="description" content="Consulte sua inscrição na Freedom Conf. 2026 e acesse seu QR Code de entrada." />
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!-- Estilos centralizados do projeto (mesmo arquivo das demais páginas) -->
+<link rel="stylesheet" href="css/styles.css?v=7">
+
+<!-- Gera a imagem do QR code da credencial -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- Transforma o card da credencial em imagem, para o botão "Baixar Credencial (PNG)" -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+<!-- Botão "← Voltar": mesma pílula flutuante (sticky, com blur) das
+     demais páginas internas — ver .pagina-voltar-bar / .btn-voltar-limpo
+     em css/styles.css -->
+<div class="pagina-voltar-bar">
+  <a class="btn-voltar-limpo" href="index.html">← Voltar</a>
+</div>
+
+<!-- ===================== CONSULTAR CREDENCIAL ===================== -->
+<section id="buscar" style="background:var(--branco); min-height:100vh;">
+  <div class="insc-wrap">
+    <svg class="arco" width="300" height="72" viewBox="0 0 300 72" overflow="visible">
+      <path id="arcBuscar" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
+      <text font-size="30"><textPath href="#arcBuscar" startOffset="50%" text-anchor="middle">FREEDOM CONF</textPath></text>
+    </svg>
+    <h1 class="heading">Minha credencial</h1>
+    <p class="sub">Digite o e-mail usado na inscrição e o PIN de 4 dígitos que você recebeu para consultar sua entrada.</p>
+
+    <!-- Formulário de busca: e-mail + PIN de segurança -->
+    <div class="form-card" id="formBusca">
+      <div class="field">
+        <label for="campoBuscaEmail">E-mail cadastrado</label>
+        <input id="campoBuscaEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="campoBuscaPin">PIN de segurança (4 dígitos)</label>
+        <input id="campoBuscaPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+      </div>
+
+      <button type="button" class="btn btn-primary" id="btnBuscarCredencial" style="width:100%; text-align:center;">Consultar Credencial</button>
+
+      <!-- Mensagens de erro (e-mail não encontrado, PIN incorreto etc.) -->
+      <p id="erroBuscaCredencial" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+
+      <!-- Aviso de bloqueio temporário por excesso de tentativas —
+           estrutura visual pronta; js/buscar.js controla quando
+           aparece, com base no contador salvo em localStorage. -->
+      <div class="bloqueio-aviso" id="bloqueioAviso" style="display:none;">
+        <strong>Muitas tentativas incorretas.</strong>
+        <span id="bloqueioAvisoTexto"> Tente novamente em alguns minutos.</span>
+      </div>
+    </div>
+
+    <!-- Seletor de credencial: só aparece quando o e-mail + PIN têm
+         mais de uma inscrição associada (ex.: família cadastrada com
+         o mesmo e-mail e mesmo PIN). Preenchido por js/buscar.js. -->
+    <div id="seletorCredenciais" style="display:none; gap:8px; flex-wrap:wrap; justify-content:center; margin:22px 0 -6px;"></div>
+
+    <!-- Container onde js/buscar.js renderiza o resultado da busca -->
+    <div id="resultadoConsulta" style="display:none; margin-top:24px;">
+
+      <!-- Estado: pagamento ainda em análise -->
+      <div class="form-card" id="resultadoPendente" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">⏳</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="pendenteNome"></span>!</h2>
+        <span class="status-pendente-badge">Status: Aguardando Validação do Pix</span>
+        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
+          Sua inscrição (<span id="pendenteCombo"></span>) ainda está em análise. Assim que o pagamento for confirmado, sua credencial com QR code aparecerá aqui, nesta mesma consulta.
+        </p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#777; margin-top:16px;">Código: <span id="pendenteCodigo"></span></p>
+      </div>
+
+      <!-- Estado: pagamento recusado -->
+      <div class="form-card" id="resultadoRecusado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">⚠️</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="recusadoNome"></span></h2>
+        <span class="badge fail" style="font-size:12px; padding:7px 16px;">Pagamento não confirmado</span>
+        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
+          Não conseguimos validar o comprovante enviado para a inscrição <span id="recusadoCodigo"></span>. Entre em contato pelo e-mail ou WhatsApp no rodapé para regularizar.
+        </p>
+      </div>
+
+      <!-- Estado: nada encontrado -->
+      <div class="form-card" id="resultadoNaoEncontrado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">🔍</div>
+        <h2 class="heading" style="margin:0 0 8px;">Nada encontrado</h2>
+        <p style="color:#555; font-size:14px; max-width:340px; margin:0 auto;">
+          Não encontramos nenhuma inscrição aprovada com esse e-mail e PIN. Confira se digitou os dois corretamente.
+        </p>
+      </div>
+
+      <!-- Estado: aprovado — Credencial / Passaporte de entrada -->
+      <div id="resultadoAprovado" style="display:none;">
+
+        <!-- #credencialContainer é exatamente o que vira a imagem PNG
+             baixada — o botão de download fica FORA dele de propósito. -->
+        <div id="credencialContainer" style="background:#0f281e; border-radius:20px; padding:0; overflow:hidden; max-width:380px; margin:0 auto; box-shadow:0 20px 48px rgba(15,40,30,.35);">
+
+          <!-- Cabeçalho da credencial -->
+          <div style="padding:22px 24px 18px; text-align:center; border-bottom:1px solid rgba(245,240,235,.15);">
+            <p style="margin:0; font-family:'Poppins',sans-serif; font-weight:700; font-size:12px; letter-spacing:3px; text-transform:uppercase; color:#f5f0eb;">Freedom Conference 2026</p>
+          </div>
+
+          <!-- Corpo: nome, status e QR code -->
+          <div style="padding:26px 24px 30px; text-align:center;">
+            <p id="credencialNome" style="margin:0 0 10px; font-family:'Poppins',sans-serif; font-weight:800; font-size:22px; color:#f5f0eb; line-height:1.25;"></p>
+
+            <span class="badge ok" style="font-size:11px; padding:6px 14px; letter-spacing:.5px;">Passaporte Confirmado</span>
+
+            <p id="credencialTipo" style="margin:14px 0 0; font-family:'Inter',sans-serif; font-size:13px; color:#C9D6CE;"></p>
+
+            <!-- Container do QR code: fundo claro (#f5f0eb) e código
+                 escuro (#0f281e), conforme a identidade da credencial -->
+            <div style="background:#f5f0eb; border-radius:14px; padding:18px; display:inline-block; margin-top:20px;">
+              <div id="credencialQrcodeBox"></div>
+            </div>
+
+            <p style="margin:16px 0 0; font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:1px; color:#f5f0eb;" id="credencialCodigo"></p>
+          </div>
+
+          <!-- Instrução de acesso na portaria -->
+          <div style="background:rgba(245,240,235,.08); padding:14px 24px; text-align:center;">
+            <p style="margin:0; font-size:12px; color:#C9D6CE; line-height:1.6;">Apresente este QR code na portaria para liberar sua entrada.</p>
+          </div>
+        </div>
+
+        <!-- Botão de download — fica fora do card, então NÃO aparece
+             na imagem PNG gerada pelo html2canvas -->
+        <div style="max-width:380px; margin:0 auto;">
+          <button type="button" class="btn-baixar-credencial" id="btnBaixarCredencial">⬇ Baixar Credencial (PNG)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 1) conexão com o Supabase; 2) lógica da consulta/credencial -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js?v=2.0.0"></script>
+<script src="js/buscar.js?v=2.0.0"></script>
+</body>
+</html>
