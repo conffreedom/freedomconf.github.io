@@ -5,31 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
 <!-- Prevenção contra cache do navegador: garante que o inscrito -->
-<!-- sempre veja a versão mais recente do formulário/consulta. -->
+<!-- sempre veja a versão mais recente do formulário. -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 
 <title>Inscrição — Freedom Conf. 2026</title>
-<meta name="description" content="Faça sua inscrição na Freedom Conf. 2026 ou consulte sua credencial e QR code de entrada." />
+<meta name="description" content="Faça sua inscrição na Freedom Conf. 2026: escolha seu ingresso, pague via Pix e envie o comprovante." />
 <meta name="robots" content="noindex, nofollow">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 
 <!-- Estilos centralizados do projeto (mesmo arquivo da Landing Page e do admin) -->
-<link rel="stylesheet" href="css/styles.css?v=6">
-
-<!-- Gera a imagem do QR code exibida quando a inscrição consultada estiver aprovada -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="css/styles.css?v=7">
 </head>
 <body>
 
+<!-- Botão "← Voltar": pílula flutuante (sticky, com blur) — ver
+     .pagina-voltar-bar / .btn-voltar-limpo em css/styles.css -->
 <div class="pagina-voltar-bar">
   <a class="btn-voltar-limpo" href="index.html">← Voltar</a>
 </div>
 
-<!-- ===================== INSCRIÇÃO ===================== -->
+<!-- ===================== INSCRIÇÃO (3 passos) ===================== -->
 <section id="inscricao">
   <div class="insc-wrap">
     <svg class="arco" width="300" height="72" viewBox="0 0 300 72" overflow="visible">
@@ -111,6 +110,24 @@
         <div class="resumo-linha"><span>Comprovante</span><b id="resumoComprovanteTxt">anexado</b></div>
         <div class="resumo-linha destaque"><span>Total pago via Pix</span><b id="resumoValorTxt"></b></div>
       </div>
+
+      <!-- Criação do PIN de segurança: feita aqui, no Passo 2, logo
+           antes da confirmação final — é o último dado que falta
+           antes de gravar a inscrição. -->
+      <div style="border-top:1px solid var(--cinza); padding-top:18px; margin-bottom:22px;">
+        <p style="margin:0 0 14px; font-size:13.5px; color:#555; line-height:1.6;">
+          Crie um PIN de 4 dígitos para consultar sua credencial posteriormente.
+        </p>
+        <div class="field">
+          <label for="campoPin">Criar PIN de 4 dígitos</label>
+          <input id="campoPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="campoPinConfirma">Confirmar PIN</label>
+          <input id="campoPinConfirma" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+        </div>
+      </div>
+
       <button type="button" class="btn-pix" id="btnConfirmarInscricao">💠 Confirmar inscrição</button>
       <p id="erroResumo" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
     </div>
@@ -129,93 +146,80 @@
         <div id="comboSucesso" style="font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; color:var(--verde); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px;"></div>
         <p style="font-size:12px; color:#777; margin:0 0 4px;">Código da inscrição</p>
         <p style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700; color:var(--preto); letter-spacing:1px; margin:0;" id="codigoSucesso"></p>
+        <p style="font-size:12px; color:#777; margin:14px 0 4px;">Seu PIN de segurança</p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700; color:var(--preto); letter-spacing:4px; margin:0;" id="pinSucesso"></p>
       </div>
 
       <p style="color:#555; font-size:13.5px; max-width:380px; margin:22px auto 0; line-height:1.6;">
         Guarde este código para referência. Assim que o pagamento for aprovado, o QR code de entrada estará disponível na consulta do participante.
       </p>
+      <a class="btn-line" style="display:inline-block; margin-top:16px; text-decoration:none;" href="buscar.html">Ver minha credencial (QR Code) →</a>
       <button type="button" class="btn-line" style="margin-top:16px;" id="btnNovaInscricao">Fazer outra inscrição</button>
     </div>
   </div>
 </section>
 
-<!-- ===================== CONSULTAR INSCRIÇÃO / CREDENCIAL ===================== -->
-<section id="buscar" style="background:var(--branco);">
-  <div class="insc-wrap">
-    <svg class="arco" width="300" height="72" viewBox="0 0 300 72" overflow="visible">
-      <path id="arcConsulta" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
-      <text font-size="30"><textPath href="#arcConsulta" startOffset="50%" text-anchor="middle">FREEDOM CONF</textPath></text>
-    </svg>
-    <h1 class="heading">Consultar minha inscrição</h1>
-    <p class="sub">Digite o e-mail usado na inscrição ou o código recebido (ex: FC2026-XXXXXX). Não usamos CPF em nenhuma etapa.</p>
+<!-- ===================== FAQ / DÚVIDAS FREQUENTES ===================== -->
+<section class="faq-section" id="faq">
+  <div class="faq-wrap">
+    <h2 class="heading">Dúvidas frequentes</h2>
+    <p class="sub">Ainda com alguma pergunta? Aqui estão as respostas mais comuns.</p>
 
-    <!-- Formulário de busca -->
-    <div class="form-card">
-      <div class="field">
-        <label for="campoBuscaInscricao">E-mail ou Código da Inscrição</label>
-        <input id="campoBuscaInscricao" placeholder="voce@email.com ou FC2026-XXXXXX" autocomplete="off" />
-      </div>
-      <button type="button" class="btn btn-primary" id="btnBuscarInscricao" style="width:100%; text-align:center;">Buscar inscrição</button>
-      <p id="erroBuscaInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
-    </div>
-
-    <!-- Container onde js/inscricao.js renderiza o resultado da busca -->
-    <div id="resultadoConsulta" style="display:none; margin-top:24px;">
-
-      <!-- Estado: pagamento ainda em análise -->
-      <div class="form-card" id="resultadoPendente" style="display:none; text-align:center;">
-        <div style="font-size:36px; margin-bottom:10px;">⏳</div>
-        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="pendenteNome"></span>!</h2>
-        <span class="status-pendente-badge">Status: Aguardando Validação do Pix</span>
-        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
-          Sua inscrição (<span id="pendenteCombo"></span>) ainda está em análise. Assim que o pagamento for confirmado, o QR code de entrada aparecerá aqui, nesta mesma consulta.
-        </p>
-        <p style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#777; margin-top:16px;">Código: <span id="pendenteCodigo"></span></p>
+    <div class="faq-grid">
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Posso comprar meu ingresso na hora, na portaria?"
+           data-resposta="Recomendamos garantir sua inscrição antes pelo site, já que as vagas são limitadas. Caso ainda restem vagas no dia do evento, a equipe pode avaliar inscrições de última hora na portaria — mas isso não é garantido.">
+        <p class="pergunta">Posso comprar na hora, na portaria?</p>
       </div>
 
-      <!-- Estado: pagamento recusado -->
-      <div class="form-card" id="resultadoRecusado" style="display:none; text-align:center;">
-        <div style="font-size:36px; margin-bottom:10px;">⚠️</div>
-        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="recusadoNome"></span></h2>
-        <span class="badge fail" style="font-size:12px; padding:7px 16px;">Pagamento não confirmado</span>
-        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
-          Não conseguimos validar o comprovante enviado para a inscrição <span id="recusadoCodigo"></span>. Entre em contato pelo e-mail ou WhatsApp no rodapé para regularizar.
-        </p>
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Existe meia-entrada ou desconto?"
+           data-resposta="Os valores exibidos na página de inscrição já são os valores finais para todos os públicos — não trabalhamos com meia-entrada nesta edição.">
+        <p class="pergunta">Existe meia-entrada?</p>
       </div>
 
-      <!-- Estado: aprovado — mostra a credencial com o QR code de entrada -->
-      <div class="form-card" id="resultadoAprovado" style="display:none; text-align:center;">
-        <div style="font-size:36px; margin-bottom:10px;">✅</div>
-        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="aprovadoNome"></span>!</h2>
-        <span class="badge ok" style="font-size:12px; padding:7px 16px;">Pagamento confirmado</span>
-        <p style="color:#555; font-size:14px; margin:14px 0 0;"><span id="aprovadoCombo"></span></p>
-
-        <div style="background:var(--cinza); border-radius:14px; padding:24px; display:inline-block; margin-top:18px;">
-          <div id="aprovadoQrcodeBox" style="background:var(--branco); padding:14px; border-radius:10px; display:inline-block;"></div>
-          <p style="font-size:12px; color:#777; margin:12px 0 4px;">Código da inscrição</p>
-          <p style="font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:700; color:var(--preto);" id="aprovadoCodigo"></p>
-        </div>
-
-        <p style="color:#555; font-size:13px; max-width:340px; margin:18px auto 0; line-height:1.6;">
-          Apresente este QR code (ou o código acima) na entrada do evento.
-        </p>
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Posso pagar com cartão em vez de Pix?"
+           data-resposta="No momento, o pagamento é feito exclusivamente via Pix, usando a chave exibida no formulário de inscrição. Depois de pagar, é só anexar o comprovante para concluir.">
+        <p class="pergunta">Posso pagar com cartão?</p>
       </div>
 
-      <!-- Estado: nada encontrado -->
-      <div class="form-card" id="resultadoNaoEncontrado" style="display:none; text-align:center;">
-        <div style="font-size:36px; margin-bottom:10px;">🔍</div>
-        <h2 class="heading" style="margin:0 0 8px;">Nada encontrado</h2>
-        <p style="color:#555; font-size:14px; max-width:340px; margin:0 auto;">
-          Não encontramos nenhuma inscrição com esse e-mail ou código. Confira se digitou corretamente.
-        </p>
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Vou receber alguma confirmação depois de me inscrever?"
+           data-resposta="Depois de enviar o comprovante, sua inscrição fica com o status 'Aguardando validação do Pix'. A equipe confere os pagamentos em até 24 horas; assim que for aprovado, seu QR code de entrada fica disponível na página de consulta da credencial.">
+        <p class="pergunta">Vou receber confirmação?</p>
+      </div>
+
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Posso transferir meu ingresso para outra pessoa?"
+           data-resposta="Sim. Basta que a pessoa que vai comparecer entre em contato pelos canais do rodapé informando o código da inscrição, para atualizarmos o nome no cadastro antes do evento.">
+        <p class="pergunta">Posso transferir meu ingresso?</p>
+      </div>
+
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="E se meu comprovante for recusado pela equipe?"
+           data-resposta="Se a equipe não conseguir validar o comprovante enviado (por exemplo, valor ou dados divergentes), sua inscrição aparece como 'Pagamento não confirmado' na consulta. Nesse caso, entre em contato pelos canais do rodapé com o código da inscrição para regularizar.">
+        <p class="pergunta">E se o comprovante for recusado?</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 1) conexão com o Supabase; 2) lógica do portal de inscrição -->
+<!-- Modal genérico (reaproveitado por outras telas do projeto) usado
+     aqui para exibir a resposta completa de cada card do FAQ -->
+<div class="modal-overlay" id="modalFaq">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalFaqTitulo"></h3>
+      <button type="button" class="modal-fechar" id="btnFecharModalFaq" aria-label="Fechar">×</button>
+    </div>
+    <div class="modal-body" id="modalFaqCorpo"></div>
+  </div>
+</div>
+
+<!-- 1) conexão com o Supabase; 2) lógica do formulário de inscrição -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js?v=2.0.0"></script>
-<script src="js/inscricao.js?v=1.0.0"></script>
+<script src="js/inscricao.js?v=3.0.0"></script>
 </body>
 </html>
