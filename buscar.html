@@ -42,37 +42,56 @@
       <text font-size="30"><textPath href="#arcBuscar" startOffset="50%" text-anchor="middle">FREEDOM CONF</textPath></text>
     </svg>
     <h1 class="heading">Minha credencial</h1>
-    <p class="sub">Digite o e-mail usado na inscrição e o PIN de 4 dígitos que você recebeu para consultar sua entrada.</p>
+    <p class="sub">Digite o e-mail usado na inscrição ou o código recebido (ex: FC2026-XXXXXX). Depois, selecione seu nome na lista e informe o PIN de 4 dígitos para ver sua credencial.</p>
 
-    <!-- Formulário de busca: e-mail + PIN de segurança -->
+    <!-- Formulário de busca: e-mail OU código da inscrição (busca híbrida) -->
     <div class="form-card" id="formBusca">
       <div class="field">
-        <label for="campoBuscaEmail">E-mail cadastrado</label>
-        <input id="campoBuscaEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
-      </div>
-      <div class="field">
-        <label for="campoBuscaPin">PIN de segurança (4 dígitos)</label>
-        <input id="campoBuscaPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+        <label for="campoBusca">E-mail ou Código da Inscrição</label>
+        <input id="campoBusca" placeholder="voce@email.com ou FC2026-XXXXXX" autocomplete="off" />
       </div>
 
       <button type="button" class="btn btn-primary" id="btnBuscarCredencial" style="width:100%; text-align:center;">Consultar Credencial</button>
 
-      <!-- Mensagens de erro (e-mail não encontrado, PIN incorreto etc.) -->
+      <!-- Mensagens de erro (nada encontrado, falha na busca etc.) -->
       <p id="erroBuscaCredencial" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
 
-      <!-- Aviso de bloqueio temporário por excesso de tentativas —
-           estrutura visual pronta; js/buscar.js controla quando
-           aparece, com base no contador salvo em localStorage. -->
+      <!-- Aviso de bloqueio temporário por excesso de tentativas de
+           PIN incorretas — estrutura visual pronta; js/buscar.js
+           controla quando aparece, com base no contador salvo em
+           localStorage. -->
       <div class="bloqueio-aviso" id="bloqueioAviso" style="display:none;">
         <strong>Muitas tentativas incorretas.</strong>
         <span id="bloqueioAvisoTexto"> Tente novamente em alguns minutos.</span>
       </div>
     </div>
 
-    <!-- Seletor de credencial: só aparece quando o e-mail + PIN têm
-         mais de uma inscrição associada (ex.: família cadastrada com
-         o mesmo e-mail e mesmo PIN). Preenchido por js/buscar.js. -->
+    <!-- Seletor de credencial: aparece quando a busca por e-mail ou
+         código retorna um ou mais participantes (ex.: família
+         cadastrada com o mesmo e-mail). Preenchido por js/buscar.js;
+         cada botão abre o modal de PIN daquele participante. -->
     <div id="seletorCredenciais" style="display:none; gap:8px; flex-wrap:wrap; justify-content:center; margin:22px 0 -6px;"></div>
+
+    <!-- Modal de PIN: pedido individualmente, POR PARTICIPANTE,
+         depois de escolhido no seletor acima — nunca no formulário
+         inicial de busca. -->
+    <div class="modal-overlay" id="modalPin">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>PIN de <span id="modalPinNome"></span></h3>
+          <button type="button" class="modal-fechar" id="btnFecharModalPin" aria-label="Fechar">×</button>
+        </div>
+        <div class="modal-body">
+          <p style="margin:0 0 14px; font-size:13.5px; color:#555;">Digite o PIN de 4 dígitos criado na inscrição desta pessoa.</p>
+          <div class="field">
+            <label for="modalPinInput">PIN de segurança</label>
+            <input id="modalPinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+          </div>
+          <button type="button" class="btn btn-primary" id="btnConfirmarPin" style="width:100%; text-align:center;">Ver credencial</button>
+          <p id="erroModalPin" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+        </div>
+      </div>
+    </div>
 
     <!-- Container onde js/buscar.js renderiza o resultado da busca -->
     <div id="resultadoConsulta" style="display:none; margin-top:24px;">
@@ -103,7 +122,7 @@
         <div style="font-size:36px; margin-bottom:10px;">🔍</div>
         <h2 class="heading" style="margin:0 0 8px;">Nada encontrado</h2>
         <p style="color:#555; font-size:14px; max-width:340px; margin:0 auto;">
-          Não encontramos nenhuma inscrição aprovada com esse e-mail e PIN. Confira se digitou os dois corretamente.
+          Não encontramos nenhuma inscrição com esse e-mail ou código. Confira se digitou corretamente.
         </p>
       </div>
 
