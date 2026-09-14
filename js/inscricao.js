@@ -1,27 +1,36 @@
 /* ============================================================
    js/inscricao.js
    ------------------------------------------------------------
-   Lógica do PORTAL DE INSCRIÇÃO & CREDENCIAL (inscricao.html):
+   Lógica do PORTAL DE INSCRIÇÃO (inscricao.html):
      1) Seleção de ingresso (Sexta / Sábado / Combo);
      2) Máscara de telefone e validação do formulário;
      3) Botão "Copiar Chave Pix";
      4) Checagem de inscrição duplicada (mesmo nome + e-mail);
-     5) Upload do comprovante de Pix para o Supabase Storage;
-     6) Geração do código único do ingresso e INSERT na tabela
-        "inscricoes" do Supabase;
-     7) Tela de sucesso com status "Aguardando Validação do Pix";
-     8) Consulta por e-mail/código e exibição da credencial com
-        o QR code de entrada (para inscrições aprovadas).
+     5) PIN de segurança de 4 dígitos: máscara, dupla validação no
+        Passo 2 (precisa bater com a confirmação) e envio junto com
+        a inscrição, mapeado para a coluna "pin_seguranca";
+     6) Upload do comprovante de Pix para o Supabase Storage;
+     7) Geração do código único do ingresso e INSERT na tabela
+        "inscricoes" do Supabase (incluindo o PIN);
+     8) Tela de sucesso com status "Aguardando Validação do Pix" e
+        exibição do PIN cadastrado.
 
    Depende de:
      - js/supabase-client.js (expõe window.supabaseClient e
        window.SUPABASE_COMPROVANTES_BUCKET), carregado ANTES
-       deste arquivo;
-     - biblioteca QRCode.js (window.QRCode), carregada no <head>
-       do inscricao.html.
+       deste arquivo.
 
    A contagem regressiva, o menu mobile e o scroll reveal da
-   Landing Page NÃO estão mais aqui — ver js/main.js.
+   Landing Page NÃO estão mais aqui — ver js/main.js. A consulta de
+   credencial (busca por e-mail/código, PIN por participante, QR
+   code, download em PNG) também NÃO está mais aqui — foi para
+   js/buscar.js, que roda em buscar.html. Este arquivo não depende
+   do QRCode.js.
+
+   Nenhuma troca de passo/tela neste arquivo dispara rolagem
+   automática (scrollIntoView) nem depende de âncoras "#" — a
+   navegação entre Passo 1 → 2 → 3 é feita só alternando
+   display:block/none, sem mover o scroll do usuário.
    ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -95,6 +104,11 @@ document.addEventListener('DOMContentLoaded', function () {
   const campoTelefone = document.getElementById('campoTelefone');
   const campoComprovante = document.getElementById('campoComprovante');
 
+  // Campos do PIN de segurança de 4 dígitos, preenchidos no Passo 2
+  // (tela de resumo) junto com a confirmação da inscrição.
+  const campoPin = document.getElementById('campoPin');
+  const campoPinConfirma = document.getElementById('campoPinConfirma');
+
   const erroInscricao = document.getElementById('erroInscricao');
   const erroComprovante = document.getElementById('erroComprovante');
   const erroResumo = document.getElementById('erroResumo');
@@ -112,6 +126,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const nomeSucesso = document.getElementById('nomeSucesso');
   const comboSucesso = document.getElementById('comboSucesso');
   const codigoSucesso = document.getElementById('codigoSucesso');
+  const pinSucesso = document.getElementById('pinSucesso');
 
   // Tamanho máximo aceito para o comprovante (5 MB) e tipos aceitos.
   const TAMANHO_MAXIMO_ARQUIVO = 5 * 1024 * 1024;
@@ -170,6 +185,24 @@ document.addEventListener('DOMContentLoaded', function () {
       evento.target.value = aplicarMascaraTelefone(evento.target.value);
     });
   }
+
+  /* ----------------------------------------------------------
+     3.1) MÁSCARA DO PIN DE SEGURANÇA (4 dígitos numéricos)
+     ---------------------------------------------------------- */
+
+  // Mesmo princípio da máscara de telefone: descarta qualquer
+  // caractere que não seja dígito e trava em 4 posições, nos dois
+  // campos (PIN e confirmação), para o usuário nunca conseguir
+  // digitar letra ou um PIN maior que o esperado.
+  [campoPin, campoPinConfirma].forEach(function (campo) {
+    if (!campo) return;
+    campo.setAttribute('maxlength', '4');
+    campo.setAttribute('inputmode', 'numeric');
+    campo.setAttribute('autocomplete', 'off');
+    campo.addEventListener('input', function (evento) {
+      evento.target.value = evento.target.value.replace(/\D/g, '').slice(0, 4);
+    });
+  });
 
   /* ----------------------------------------------------------
      4) BOTÃO "COPIAR CHAVE PIX"
@@ -287,6 +320,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
       esconderTodasAsTelas();
       telaResumo.style.display = 'block';
+      // Sem scrollIntoView: a troca de passo só alterna qual card
+      // está visível, mantendo a posição de rolagem do usuário.
     });
   }
 
@@ -385,6 +420,36 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
+     7.1) PIN DE SEGURANÇA: dupla validação (Passo 2)
+     ---------------------------------------------------------- */
+
+  // Confere se o PIN tem exatamente 4 dígitos numéricos e se os
+  // dois campos (PIN e confirmação) são idênticos. Retorna o PIN
+  // validado (string) em caso de sucesso, ou null se houver erro —
+  // já mostrando a mensagem correspondente em #erroResumo e focando
+  // o campo problemático, para o botão "Confirmar inscrição" poder
+  // simplesmente checar "if (!pin) return;".
+  function validarPin() {
+    const pin = campoPin ? campoPin.value.trim() : '';
+    const pinConfirma = campoPinConfirma ? campoPinConfirma.value.trim() : '';
+
+    const pinNumericoDe4Digitos = /^\d{4}$/.test(pin);
+    if (!pinNumericoDe4Digitos) {
+      mostrarErro(erroResumo, 'Crie um PIN de segurança com exatamente 4 números.');
+      if (campoPin) campoPin.focus();
+      return null;
+    }
+
+    if (pin !== pinConfirma) {
+      mostrarErro(erroResumo, 'Os dois PINs digitados não coincidem. Confira e tente novamente.');
+      if (campoPinConfirma) campoPinConfirma.focus();
+      return null;
+    }
+
+    return pin;
+  }
+
+  /* ----------------------------------------------------------
      8) PASSO 2 → PASSO 3: upload do comprovante + INSERT
      ---------------------------------------------------------- */
 
@@ -467,10 +532,17 @@ document.addEventListener('DOMContentLoaded', function () {
       // navegadores mobile) é ignorada — impede disparar duas
       // inscrições/uploads em paralelo para o mesmo clique.
       if (btnConfirmarInscricao.disabled) return;
-      btnConfirmarInscricao.disabled = true;
-      const textoOriginalBotao = btnConfirmarInscricao.textContent;
 
       esconderErro(erroResumo);
+
+      // Valida o PIN ANTES de desabilitar o botão/travar a tela: se
+      // estiver errado, a pessoa corrige e clica de novo sem nenhum
+      // upload ou chamada ao Supabase ter sido feita.
+      const pinValidado = validarPin();
+      if (!pinValidado) return;
+
+      btnConfirmarInscricao.disabled = true;
+      const textoOriginalBotao = btnConfirmarInscricao.textContent;
 
       const arquivo = campoComprovante.files[0];
       if (!arquivo) {
@@ -507,20 +579,41 @@ document.addEventListener('DOMContentLoaded', function () {
           status_pagamento: 'pendente',
           checkin_realizado: false,
           comprovante_url: urlComprovante,
+          pin_seguranca: pinValidado,
         };
 
         const inscricaoCriada = await inserirInscricaoComRetentativa(dadosInscricao, 5);
 
+        // IMPORTANTE: exibe o PIN que VOLTOU do banco
+        // (inscricaoCriada.pin_seguranca), não o valor digitado no
+        // formulário. Mostrar sempre "pinValidado" aqui mascararia
+        // silenciosamente qualquer problema de gravação — a pessoa
+        // veria o PIN certo na tela mesmo que, por algum motivo do
+        // lado do banco (RLS, trigger, nome de coluna), o valor
+        // salvo tivesse ficado null. Registrar essa divergência no
+        // console também ajuda a equipe a flagrar o problema cedo.
+        if (inscricaoCriada.pin_seguranca !== pinValidado) {
+          console.error(
+            '[inscricao.js] PIN divergente após salvar a inscrição — enviado:',
+            pinValidado,
+            '| retornado pelo Supabase:',
+            inscricaoCriada.pin_seguranca
+          );
+        }
+
         // Preenche e exibe a tela de sucesso. O pagamento ainda
         // depende de conferência manual, então nenhum QR code é
-        // gerado aqui — só o código em texto, como referência.
+        // gerado aqui — só o código em texto e o PIN cadastrado,
+        // como referência.
         nomeSucesso.textContent = nomeCompleto.split(' ')[0];
         comboSucesso.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso;
         codigoSucesso.textContent = inscricaoCriada.codigo_ingresso;
+        if (pinSucesso) pinSucesso.textContent = inscricaoCriada.pin_seguranca;
 
         esconderTodasAsTelas();
         telaSucesso.style.display = 'block';
-        telaSucesso.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Sem scrollIntoView: mantém a posição de rolagem do
+        // usuário ao trocar para a tela de sucesso.
       } catch (erro) {
         // Mostra a mensagem REAL do erro (não uma genérica), para
         // diagnosticar problemas específicos de dispositivo/rede
@@ -544,6 +637,8 @@ document.addEventListener('DOMContentLoaded', function () {
       campoEmail.value = '';
       campoTelefone.value = '';
       campoComprovante.value = '';
+      if (campoPin) campoPin.value = '';
+      if (campoPinConfirma) campoPinConfirma.value = '';
       esconderErro(erroInscricao);
       esconderErro(erroComprovante);
       esconderErro(erroResumo);
@@ -552,165 +647,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
       esconderTodasAsTelas();
       telaForm.style.display = 'block';
-      telaForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Sem scrollIntoView: volta para o Passo 1 sem forçar rolagem.
     });
-  }
-
-  /* ----------------------------------------------------------
-     10) CONSULTAR MINHA INSCRIÇÃO / CREDENCIAL
-     ---------------------------------------------------------- */
-
-  const campoBuscaInscricao = document.getElementById('campoBuscaInscricao');
-  const btnBuscarInscricao = document.getElementById('btnBuscarInscricao');
-  const erroBuscaInscricao = document.getElementById('erroBuscaInscricao');
-
-  const resultadoConsulta = document.getElementById('resultadoConsulta');
-  const resultadoPendente = document.getElementById('resultadoPendente');
-  const resultadoRecusado = document.getElementById('resultadoRecusado');
-  const resultadoAprovado = document.getElementById('resultadoAprovado');
-  const resultadoNaoEncontrado = document.getElementById('resultadoNaoEncontrado');
-
-  const pendenteNome = document.getElementById('pendenteNome');
-  const pendenteCombo = document.getElementById('pendenteCombo');
-  const pendenteCodigo = document.getElementById('pendenteCodigo');
-
-  const recusadoNome = document.getElementById('recusadoNome');
-  const recusadoCodigo = document.getElementById('recusadoCodigo');
-
-  const aprovadoNome = document.getElementById('aprovadoNome');
-  const aprovadoCombo = document.getElementById('aprovadoCombo');
-  const aprovadoCodigo = document.getElementById('aprovadoCodigo');
-  const aprovadoQrcodeBox = document.getElementById('aprovadoQrcodeBox');
-
-  // Decide se o texto digitado deve ser buscado como e-mail ou como
-  // código de inscrição — nunca como CPF, que não existe em lugar
-  // nenhum deste sistema. A regra é simples: se tem "@", é e-mail;
-  // caso contrário, tratamos como código (normalizado em maiúsculas,
-  // já que é assim que ele é gerado e exibido ao participante).
-  function detectarTipoBusca(valorDigitado) {
-    const valor = valorDigitado.trim();
-    if (valor.includes('@')) {
-      return { campo: 'email', valor: valor };
-    }
-    return { campo: 'codigo_ingresso', valor: valor.toUpperCase() };
-  }
-
-  // Esconde os 4 possíveis cartões de resultado e mostra só o
-  // indicado (ou nenhum, se idEstado for null — usado para "resetar"
-  // antes de uma nova busca).
-  function mostrarEstadoConsulta(idEstado) {
-    [resultadoPendente, resultadoRecusado, resultadoAprovado, resultadoNaoEncontrado].forEach(function (cartao) {
-      if (cartao) cartao.style.display = 'none';
-    });
-    if (idEstado) {
-      idEstado.style.display = 'block';
-    }
-    resultadoConsulta.style.display = 'block';
-    resultadoConsulta.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  // Gera o QR code do código de entrada dentro de #aprovadoQrcodeBox.
-  // Precisa limpar o conteúdo anterior porque a biblioteca QRCode.js
-  // só adiciona elementos, nunca substitui os que já existem — sem
-  // isso, cada nova busca aprovada empilharia um QR code em cima do
-  // outro.
-  function gerarQrCodeConsulta(codigo) {
-    if (!aprovadoQrcodeBox || typeof QRCode === 'undefined') return;
-    aprovadoQrcodeBox.innerHTML = '';
-    new QRCode(aprovadoQrcodeBox, {
-      text: codigo,
-      width: 140,
-      height: 140,
-      colorDark: '#053827',
-      colorLight: '#FBFAF7',
-    });
-  }
-
-  async function buscarInscricao() {
-    esconderErro(erroBuscaInscricao);
-
-    const valorDigitado = campoBuscaInscricao.value.trim();
-    if (!valorDigitado) {
-      mostrarErro(erroBuscaInscricao, 'Digite seu e-mail ou o código da inscrição.');
-      return;
-    }
-
-    const { campo, valor } = detectarTipoBusca(valorDigitado);
-
-    btnBuscarInscricao.disabled = true;
-    const textoOriginalBotao = btnBuscarInscricao.textContent;
-    btnBuscarInscricao.textContent = 'Buscando...';
-
-    try {
-      // Por e-mail: uma mesma pessoa pode ter mais de uma inscrição
-      // (ex.: comprou para si e depois para um familiar com o mesmo
-      // e-mail de contato) — nesse caso, mostramos a mais recente.
-      // Por código: o valor já é único por natureza, então "limit(1)"
-      // aqui é só uma garantia extra, nunca deveria haver mais de um.
-      const { data, error } = await window.supabaseClient
-        .from('inscricoes')
-        .select('*')
-        .eq(campo, valor)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        mostrarErro(erroBuscaInscricao, obterMensagemErro(error, 'Não foi possível concluir a busca. Tente novamente.'));
-        return;
-      }
-
-      if (!data) {
-        mostrarEstadoConsulta(resultadoNaoEncontrado);
-        return;
-      }
-
-      const primeiroNome = (data.nome_completo || '').split(' ')[0];
-      const nomeComboExibicao = NOMES_COMBO[data.tipo_ingresso] || data.tipo_ingresso;
-
-      if (data.status_pagamento === 'aprovado') {
-        aprovadoNome.textContent = primeiroNome;
-        aprovadoCombo.textContent = nomeComboExibicao;
-        aprovadoCodigo.textContent = data.codigo_ingresso;
-        gerarQrCodeConsulta(data.codigo_ingresso);
-        mostrarEstadoConsulta(resultadoAprovado);
-      } else if (data.status_pagamento === 'recusado') {
-        recusadoNome.textContent = primeiroNome;
-        recusadoCodigo.textContent = data.codigo_ingresso;
-        mostrarEstadoConsulta(resultadoRecusado);
-      } else {
-        // Qualquer outro valor (na prática, "pendente") cai aqui.
-        pendenteNome.textContent = primeiroNome;
-        pendenteCombo.textContent = nomeComboExibicao;
-        pendenteCodigo.textContent = data.codigo_ingresso;
-        mostrarEstadoConsulta(resultadoPendente);
-      }
-    } catch (erro) {
-      console.error('[inscricao.js] Erro ao buscar inscrição:', erro);
-      mostrarErro(erroBuscaInscricao, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
-    } finally {
-      btnBuscarInscricao.disabled = false;
-      btnBuscarInscricao.textContent = textoOriginalBotao;
-    }
-  }
-
-  if (btnBuscarInscricao) {
-    btnBuscarInscricao.addEventListener('click', buscarInscricao);
-  }
-
-  if (campoBuscaInscricao) {
-    campoBuscaInscricao.addEventListener('keydown', function (evento) {
-      if (evento.key === 'Enter') buscarInscricao();
-    });
-  }
-
-  /* ----------------------------------------------------------
-     11) ABERTURA DIRETA VIA #buscar (link "Já tenho inscrição"
-         da Landing Page) — foca o campo de busca automaticamente
-         para o usuário já poder digitar, sem precisar clicar.
-     ---------------------------------------------------------- */
-
-  if (window.location.hash === '#buscar' && campoBuscaInscricao) {
-    campoBuscaInscricao.focus();
   }
 });
