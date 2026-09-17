@@ -570,7 +570,21 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         const link = document.createElement('a');
-        link.download = 'credencial-freedom-conf-2026.png';
+        // Pega o nome e o código da tela (ou do objeto do participante)
+      const nomeElemento = document.getElementById('credencialNome')?.textContent || 'participante';
+      const codigoElemento = document.getElementById('credencialCodigo')?.textContent || '';
+
+      // Trata o nome (remove acentos, espaços viram hífens e fica em minúsculo)
+      const nomeFormatado = nomeElemento
+        .trim()
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "-")
+        .replace(/-+/g, "-");
+
+      // Define o nome único (ex: credencial-felipe-santos-fc2026-3wxz9z.png)
+      const sufixoCodigo = codigoElemento ? `-${codigoElemento.toLowerCase()}` : '';
+      link.download = `credencial-${nomeFormatado}${sufixoCodigo}.png`;
         link.href = canvas.toDataURL('image/png');
         document.body.appendChild(link);
         link.click();
