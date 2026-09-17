@@ -66,11 +66,34 @@
       </div>
     </div>
 
-    <!-- Seletor de credencial: aparece quando a busca por e-mail ou
-         código retorna um ou mais participantes (ex.: família
-         cadastrada com o mesmo e-mail). Preenchido por js/buscar.js;
-         cada botão abre o modal de PIN daquele participante. -->
-    <div id="seletorCredenciais" style="display:none; gap:8px; flex-wrap:wrap; justify-content:center; margin:22px 0 -6px;"></div>
+    <!-- Modal de seleção de participante(s): fundo verde-escuro
+         oficial, com um card bege em formato de pílula por
+         inscrito encontrado. A visibilidade deste modal acompanha
+         automaticamente o #seletorCredenciais logo abaixo (que o
+         js/buscar.js já controla via style.display/innerHTML, sem
+         nenhuma mudança necessária no script) — ver a regra
+         "#modalSelecaoParticipantes:has(#seletorCredenciais...)"
+         em css/styles.css. O fechar (clique no "×" ou fora do
+         card) usa um pequeno onclick inline, então também não
+         depende de nenhum listener novo no buscar.js. -->
+    <div class="modal-overlay modal-selecao-overlay" id="modalSelecaoParticipantes"
+         onclick="if(event.target===this){var s=document.getElementById('seletorCredenciais'); if(s) s.style.display='none';}">
+      <div class="modal-box modal-selecao-box">
+        <div class="modal-header">
+          <h3>Selecione o participante</h3>
+          <button type="button" class="modal-fechar" aria-label="Fechar"
+                  onclick="var s=document.getElementById('seletorCredenciais'); if(s) s.style.display='none';">×</button>
+        </div>
+        <div class="modal-body">
+          <!-- Preenchido dinamicamente por js/buscar.js: um botão
+               ".btn-line" por participante encontrado (mesmo código
+               de sempre). O CSS reestiliza esses botões, dentro
+               deste container, como os cards bege em pílula do
+               novo design — ver css/styles.css. -->
+          <div id="seletorCredenciais" style="display:none; flex-direction:column; gap:10px;"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- Modal de PIN: pedido individualmente, POR PARTICIPANTE,
          depois de escolhido no seletor acima — nunca no formulário
