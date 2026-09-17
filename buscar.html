@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 
 <!-- Estilos centralizados do projeto (mesmo arquivo das demais páginas) -->
-<link rel="stylesheet" href="css/styles.css?v=10">
+<link rel="stylesheet" href="css/styles.css?v=11">
 
 <!-- Gera a imagem do QR code da credencial -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -162,7 +162,7 @@
           </div>
 
           <!-- Corpo: nome, status e QR code -->
-          <div style="padding:26px 24px 30px; text-align:center;">
+          <div style="padding:26px 24px 40px; text-align:center;">
             <p id="credencialNome" style="margin:0 0 10px; font-family:'Poppins',sans-serif; font-weight:800; font-size:22px; color:#f5f0eb; line-height:1.25;"></p>
 
             <span class="badge ok" style="display:none;">Passaporte Confirmado</span>
@@ -176,12 +176,6 @@
             </div>
 
             <p style="margin:16px 0 0; font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:1px; color:#f5f0eb;" id="credencialCodigo"></p>
-          </div>
-
-          <!-- Instrução de acesso na portaria -->
-          <div style="background:rgba(245,240,235,.08); padding:14px 24px; text-align:center;">
-            <p style="margin:0; font-size:12px; color:#C9D6CE; line-height:1.6;">Apresente este QR code na portaria para liberar sua entrada.</p>
-          </div>
         </div>
 
         <!-- Botão de download — fica fora do card, então NÃO aparece
@@ -197,6 +191,6 @@
 <!-- 1) conexão com o Supabase; 2) lógica da consulta/credencial -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js?v=2.0.0"></script>
-<script src="js/buscar.js?v=3.0.1"></script>
+<script src="js/buscar.js?v=3.0.2"></script>
 </body>
 </html>
