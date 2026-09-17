@@ -152,35 +152,35 @@
       <!-- Estado: aprovado — Credencial / Passaporte de entrada -->
       <div id="resultadoAprovado" style="display:none;">
 
-        <!-- #credencialContainer é exatamente o que vira a imagem PNG
-             baixada — o botão de download fica FORA dele de propósito. -->
-        <div id="credencialContainer" style="background:#0f281e; border-radius:20px; padding:0; overflow:hidden; max-width:380px; margin:0 auto; box-shadow:0 20px 40px rgba(0,0,0,.3);">
+        <!-- #credencialContainer exatamente o que vira a imagem PNG baixada -->
+      <div id="credencialContainer" style="background:#0f281e; border-radius:20px; padding:0; overflow:hidden; max-width:380px; min-height:520px; margin:0 auto; box-shadow:0 20px 40px rgba(0,0,0,.3); display:flex; flex-direction:column; justify-content:space-between;">
 
         <!-- Cabeçalho da credencial -->
-        <div style="padding:22px 24px 18px; text-align:center; border-bottom:1px solid rgba(245,240,235,.15);">
+        <div style="padding:24px 24px 18px; text-align:center; border-bottom:1px solid rgba(245,240,235,.15);">
           <p style="margin:0; font-family:'Poppins',sans-serif; font-weight:700; font-size:12px; letter-spacing:3px; text-transform:uppercase; color:#f5f0eb;">CONFERÊNCIA FREEDOM</p>
         </div>
 
         <!-- Corpo: nome, status e QR code -->
-        <div style="padding:26px 24px 40px; text-align:center;">
-          <p id="credencialNome" style="margin:0 0 10px; font-family:'Poppins',sans-serif; font-weight:800; font-size:22px; color:#f5f0eb; line-height:1.25;"></p>
+        <div style="padding:30px 24px 36px; text-align:center; flex-grow:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+          
+          <p id="credencialNome" style="margin:0 0 8px; font-family:'Poppins',sans-serif; font-weight:800; font-size:22px; color:#f5f0eb; line-height:1.25; max-width:300px; word-wrap:break-word;"></p>
 
           <span class="badge ok" style="display:none;">Passaporte Confirmado</span>
 
-          <p id="credencialTipo" style="margin:14px 0 0; font-family:'Inter',sans-serif; font-size:13px; color:#C9D6CE;"></p>
+          <p id="credencialTipo" style="margin:8px 0 0; font-family:'Inter',sans-serif; font-size:13px; color:#C9D6CE;"></p>
 
-          <!-- Container do QR code: fundo claro (#f5f0eb) e código escuro (#0f281e) -->
-          <div style="background:#f5f0eb; border-radius:14px; padding:18px; display:inline-block; margin-top:20px;">
+          <!-- Container do QR code -->
+          <div style="background:#f5f0eb; border-radius:16px; padding:20px; display:inline-block; margin-top:24px; box-shadow:0 8px 20px rgba(0,0,0,.2);">
             <div id="credencialQrcodeBox"></div>
           </div>
 
-          <p style="margin:16px 0 0; font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:1px; color:#f5f0eb;" id="credencialCodigo"></p>
+          <p style="margin:20px 0 0; font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:1.5px; color:#f5f0eb;" id="credencialCodigo"></p>
         </div>
 
       </div>
 
-      <!-- Botão de download fica FORA do card -->
-      <div style="max-width:380px; margin:16px auto 0;">
+      <!-- Botão de download (FORA do card) -->
+      <div style="max-width:380px; margin:20px auto 0;">
         <button type="button" class="btn-baixar-credencial" id="btnBaixarCredencial">↓ Baixar Credencial (PNG)</button>
       </div>
     </div>
