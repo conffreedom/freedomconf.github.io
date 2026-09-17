@@ -3,8 +3,9 @@
    ------------------------------------------------------------
    Lógica do PORTAL DO PARTICIPANTE / CREDENCIAL (buscar.html):
      1) Busca híbrida por e-mail OU código da inscrição;
-     2) Seletor de participantes (chips), quando a busca retorna
-        mais de uma inscrição associada;
+     2) Modal de seleção de participantes (cards bege, com nome e
+        data da inscrição), quando a busca retorna uma ou mais
+        inscrições associadas;
      3) Modal de PIN individual — pedido por participante, nunca no
         formulário inicial de busca. O PIN correto é conferido
         direto no filtro da consulta ao Supabase (o valor certo
@@ -15,6 +16,11 @@
      5) Proteção anti-força-bruta via localStorage: bloqueio
         temporário após 5 tentativas de PIN incorretas;
      6) Download da credencial em PNG via html2canvas.
+
+   Ambos os modais (seleção de participante e PIN) são abertos e
+   fechados adicionando/removendo a classe ".aberto" — nenhuma
+   lógica de visibilidade depende de seletores CSS ":has()" nem de
+   estilo inline no overlay.
 
    Depende de:
      - js/supabase-client.js (expõe window.supabaseClient),
@@ -43,6 +49,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const bloqueioAviso = document.getElementById('bloqueioAviso');
   const bloqueioAvisoTexto = document.getElementById('bloqueioAvisoTexto');
 
+  const modalSelecaoParticipantes = document.getElementById('modalSelecaoParticipantes');
+  const btnFecharModalSelecao = modalSelecaoParticipantes
+    ? modalSelecaoParticipantes.querySelector('.modal-fechar')
+    : null;
   const seletorCredenciais = document.getElementById('seletorCredenciais');
 
   const resultadoConsulta = document.getElementById('resultadoConsulta');
@@ -103,6 +113,21 @@ document.addEventListener('DOMContentLoaded', function () {
     const partes = (nomeCompleto || '').trim().split(/\s+/).filter(Boolean);
     if (partes.length <= 1) return partes[0] || '';
     return partes[0] + ' ' + partes[partes.length - 1];
+  }
+
+  // Formata uma data ISO (como o Supabase devolve em "created_at")
+  // no padrão brasileiro DD/MM/AAAA. Usa os componentes locais do
+  // Date (dia/mês/ano do fuso do navegador), não UTC — para a data
+  // exibida bater com o dia que a pessoa realmente viveu ao se
+  // inscrever, não o de outro fuso horário.
+  function formatarDataBr(dataIso) {
+    if (!dataIso) return '';
+    const data = new Date(dataIso);
+    if (Number.isNaN(data.getTime())) return '';
+    const dia = String(data.getDate()).padStart(2, '0');
+    const mes = String(data.getMonth() + 1).padStart(2, '0');
+    const ano = data.getFullYear();
+    return dia + '/' + mes + '/' + ano;
   }
 
   /* ----------------------------------------------------------
@@ -185,7 +210,31 @@ document.addEventListener('DOMContentLoaded', function () {
   atualizarUiBloqueio();
 
   /* ----------------------------------------------------------
-     2) BUSCA HÍBRIDA (e-mail OU código da inscrição)
+     2) MODAL DE SELEÇÃO DE PARTICIPANTES
+     ---------------------------------------------------------- */
+
+  function mostrarModalSelecao() {
+    if (modalSelecaoParticipantes) modalSelecaoParticipantes.classList.add('aberto');
+  }
+
+  function esconderModalSelecao() {
+    if (modalSelecaoParticipantes) modalSelecaoParticipantes.classList.remove('aberto');
+  }
+
+  if (btnFecharModalSelecao) {
+    btnFecharModalSelecao.addEventListener('click', esconderModalSelecao);
+  }
+
+  if (modalSelecaoParticipantes) {
+    // Clicar na área escurecida (fora dos cards bege) também fecha
+    // o modal — só o clique diretamente no overlay conta.
+    modalSelecaoParticipantes.addEventListener('click', function (evento) {
+      if (evento.target === modalSelecaoParticipantes) esconderModalSelecao();
+    });
+  }
+
+  /* ----------------------------------------------------------
+     3) BUSCA HÍBRIDA (e-mail OU código da inscrição)
      ---------------------------------------------------------- */
 
   // Decide se o texto digitado deve ser buscado como e-mail ou como
@@ -217,29 +266,44 @@ document.addEventListener('DOMContentLoaded', function () {
     resultadoConsulta.style.display = 'block';
   }
 
-  // Monta os "chips" (um botão por participante encontrado) dentro
-  // de #seletorCredenciais. Clicar em um nome abre o modal de PIN
-  // daquela pessoa especificamente.
+  // Monta um card bege por participante encontrado (nome em
+  // destaque + data da inscrição no rodapé) dentro de
+  // #seletorCredenciais, e abre o modal de seleção. Clicar em um
+  // card abre o modal de PIN daquela pessoa especificamente.
   function renderizarSeletorParticipantes(participantes) {
     seletorCredenciais.innerHTML = '';
 
     participantes.forEach(function (pessoa) {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'btn-line';
-      chip.textContent = pessoa.nome_completo;
-      chip.addEventListener('click', function () {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'cartao-participante';
+
+      const nome = document.createElement('span');
+      nome.className = 'cartao-participante-nome';
+      nome.textContent = pessoa.nome_completo;
+
+      const dataInscricao = document.createElement('span');
+      dataInscricao.className = 'cartao-participante-data';
+      const dataFormatada = formatarDataBr(pessoa.created_at);
+      dataInscricao.textContent = dataFormatada ? 'Inscrito em ' + dataFormatada : '';
+
+      card.appendChild(nome);
+      card.appendChild(dataInscricao);
+      card.addEventListener('click', function () {
         abrirModalPin(pessoa);
       });
-      seletorCredenciais.appendChild(chip);
+
+      seletorCredenciais.appendChild(card);
     });
 
     seletorCredenciais.style.display = 'flex';
+    mostrarModalSelecao();
   }
 
   async function buscarParticipantes() {
     esconderErro(erroBuscaCredencial);
     esconderTodosOsResultados();
+    esconderModalSelecao();
     seletorCredenciais.style.display = 'none';
     seletorCredenciais.innerHTML = '';
 
@@ -263,13 +327,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     try {
       // Nesta primeira consulta, só os campos necessários para
-      // montar a lista de nomes são pedidos — nome_completo e
-      // tipo_ingresso. O "pin_seguranca" de ninguém é buscado em
-      // lote aqui; ele só entra na consulta seguinte, já filtrado
-      // por um "id" específico (ver validarPinDoParticipante).
+      // montar os cards são pedidos — nome, tipo de ingresso e a
+      // data de criação (para o "Inscrito em DD/MM/AAAA"). O
+      // "pin_seguranca" de ninguém é buscado em lote aqui; ele só
+      // entra na consulta seguinte, já filtrado por um "id"
+      // específico (ver validarPinDoParticipante).
       const { data, error } = await window.supabaseClient
         .from('inscricoes')
-        .select('id, nome_completo, tipo_ingresso')
+        .select('id, nome_completo, tipo_ingresso, created_at')
         .ilike(campo, valor)
         .order('nome_completo', { ascending: true });
 
@@ -304,7 +369,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     3) MODAL DE PIN (por participante)
+     4) MODAL DE PIN (por participante)
      ---------------------------------------------------------- */
 
   function abrirModalPin(pessoa) {
@@ -312,30 +377,53 @@ document.addEventListener('DOMContentLoaded', function () {
     modalPinNome.textContent = obterPrimeiroEUltimoNome(pessoa.nome_completo) || 'participante';
     modalPinInput.value = '';
     esconderErro(erroModalPin);
+    esconderModalSelecao();
     modalPin.classList.add('aberto');
     modalPinInput.focus();
   }
 
+  // Fecha o modal de PIN sem reabrir o de seleção — usado nos
+  // caminhos "internos" (PIN validado com sucesso, ou bloqueio por
+  // excesso de tentativas), onde voltar para a lista não faz sentido.
   function fecharModalPin() {
     modalPin.classList.remove('aberto');
     participanteSelecionado = null;
   }
 
+  // Fecha o modal de PIN E reabre o de seleção — usado quando quem
+  // está fechando é o PRÓPRIO usuário (botão "×", clique fora ou
+  // Esc), já que nesse caso faz sentido deixá-lo escolher outra
+  // pessoa sem precisar buscar de novo.
+  function cancelarModalPin() {
+    fecharModalPin();
+    if (seletorCredenciais && seletorCredenciais.children.length > 0) {
+      mostrarModalSelecao();
+    }
+  }
+
   if (btnFecharModalPin) {
-    btnFecharModalPin.addEventListener('click', fecharModalPin);
+    btnFecharModalPin.addEventListener('click', cancelarModalPin);
   }
 
   if (modalPin) {
     // Clicar na área escurecida (fora do card branco) também fecha
     // o modal — só o clique diretamente no overlay conta.
     modalPin.addEventListener('click', function (evento) {
-      if (evento.target === modalPin) fecharModalPin();
+      if (evento.target === modalPin) cancelarModalPin();
     });
   }
 
+  // Tecla Esc fecha o modal que estiver aberto no momento — dá
+  // prioridade ao de PIN, já que ele fica por cima do de seleção
+  // quando os dois "existem" ao mesmo tempo.
   document.addEventListener('keydown', function (evento) {
-    if (evento.key === 'Escape' && modalPin && modalPin.classList.contains('aberto')) {
-      fecharModalPin();
+    if (evento.key !== 'Escape') return;
+    if (modalPin && modalPin.classList.contains('aberto')) {
+      cancelarModalPin();
+      return;
+    }
+    if (modalSelecaoParticipantes && modalSelecaoParticipantes.classList.contains('aberto')) {
+      esconderModalSelecao();
     }
   });
 
@@ -352,7 +440,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     4) VALIDAÇÃO DO PIN + RENDERIZAÇÃO DO RESULTADO
+     5) VALIDAÇÃO DO PIN + RENDERIZAÇÃO DO RESULTADO
      ---------------------------------------------------------- */
 
   function gerarQrCodeCredencial(codigo) {
@@ -439,7 +527,8 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // PIN correto: zera o contador de tentativas erradas, fecha o
-      // modal e mostra a credencial (ou o status correspondente).
+      // modal (sem reabrir a seleção — a busca terminou com
+      // sucesso) e mostra a credencial (ou o status correspondente).
       resetarTentativas();
       fecharModalPin();
       renderizarResultado(data);
@@ -457,7 +546,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     5) DOWNLOAD DA CREDENCIAL EM PNG (html2canvas)
+     6) DOWNLOAD DA CREDENCIAL EM PNG (html2canvas)
      ---------------------------------------------------------- */
 
   if (btnBaixarCredencial) {
