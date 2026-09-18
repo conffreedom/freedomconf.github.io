@@ -598,11 +598,14 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 });
 // ==========================================
-// LÓGICA DE LOTES DINÂMICOS E CHAVE PIX
+// ESTADO GLOBAL DA INSCRIÇÃO
 // ==========================================
-
 let loteAtivoAtual = null;
+let opcaoSelecionada = 'combo'; // Padrão inicial
 
+// ==========================================
+// 1. CARREGAR LOTE ATIVO DO SUPABASE
+// ==========================================
 async function carregarLoteAtivo() {
   try {
     const { data: lote, error } = await window.supabaseClient
@@ -623,18 +626,15 @@ async function carregarLoteAtivo() {
 
     loteAtivoAtual = lote;
 
-    // 1. Exibe o nome do lote
+    // Preenche o nome do lote (ex: "1º Lote")
     const elNome = document.getElementById('nomeLoteExibicao');
     if (elNome) elNome.textContent = lote.nome;
 
-    // 2. Identifica qual card está selecionado no HTML (Sexta, Sábado ou Combo)
+    // Identifica o card selecionado no HTML
     const cardSelecionado = document.querySelector('.combo.selecionado') || document.querySelector('.combo');
-    const tipoInicial = cardSelecionado ? cardSelecionado.getAttribute('data-tipo') : 'sexta';
+    const tipoInicial = cardSelecionado ? cardSelecionado.getAttribute('data-tipo') : 'combo';
 
-    // 3. Preenche preço e Pix iniciais
     atualizarDetalhesIngresso(tipoInicial);
-
-    // 4. Configura os cliques para alternar entre os cards
     configurarSelecaoDeCombos();
 
   } catch (err) {
@@ -642,18 +642,21 @@ async function carregarLoteAtivo() {
   }
 }
 
-// Atualiza o valor e a Chave Pix na tela de acordo com o tipo
+// ==========================================
+// 2. ATUALIZAR PREÇO E PIX DINÂMICOS
+// ==========================================
 function atualizarDetalhesIngresso(tipo) {
   if (!loteAtivoAtual) return;
+
+  opcaoSelecionada = tipo || 'combo';
 
   let valor = 0;
   let chavePix = '';
 
-  // Lê os campos exatos criados no banco Supabase
-  if (tipo === 'sexta') {
+  if (opcaoSelecionada === 'sexta') {
     valor = parseFloat(loteAtivoAtual.preco_sexta ?? loteAtivoAtual.preco_combo ?? 0);
     chavePix = loteAtivoAtual.chave_pix_sexta || loteAtivoAtual.chave_pix_combo;
-  } else if (tipo === 'sabado') {
+  } else if (opcaoSelecionada === 'sabado') {
     valor = parseFloat(loteAtivoAtual.preco_sabado ?? loteAtivoAtual.preco_combo ?? 0);
     chavePix = loteAtivoAtual.chave_pix_sabado || loteAtivoAtual.chave_pix_combo;
   } else {
@@ -661,21 +664,36 @@ function atualizarDetalhesIngresso(tipo) {
     chavePix = loteAtivoAtual.chave_pix_combo;
   }
 
-  // Atualiza Preço Total na Tela
+  // Atualiza Preço na Tela (Passo 1)
   const elPreco = document.getElementById('totalValor');
   if (elPreco) {
-    const precoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
-    elPreco.textContent = precoFormatado;
+    elPreco.textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
   }
 
-  // Atualiza Chave Pix na Tela
+  // Atualiza Chave Pix
   const elPix = document.getElementById('chavePixTexto');
   if (elPix) {
     elPix.textContent = chavePix || 'Chave indisponível';
   }
+
+  // Atualiza a Tela de Confirmação (Passo 2 - Evita o R$ NaN do Resumo)
+  atualizarResumoConfirmacao(valor, opcaoSelecionada);
 }
 
-// Escuta os cliques nos cards de Sexta, Sábado e Combo
+function atualizarResumoConfirmacao(valor, tipo) {
+  const elTotalResumo = document.getElementById('resumoTotal') || document.querySelector('.total-pago') || document.getElementById('totalPagoPix');
+  if (elTotalResumo) {
+    elTotalResumo.textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+  }
+
+  const elOpcaoResumo = document.getElementById('resumoOpcao');
+  if (elOpcaoResumo) {
+    const nomes = { sexta: 'Sexta-feira', sabado: 'Sábado', combo: 'Combo (Sexta + Sábado)' };
+    elOpcaoResumo.textContent = nomes[tipo] || tipo;
+  }
+}
+
+// Escuta os cliques nos cards
 function configurarSelecaoDeCombos() {
   const combos = document.querySelectorAll('.combo');
 
@@ -690,7 +708,7 @@ function configurarSelecaoDeCombos() {
   });
 }
 
-// Botão para copiar a Chave Pix
+// Botão Copiar Pix
 function configurarBotaoCopiarPix() {
   const btnCopiar = document.getElementById('btnCopiarPix');
 
@@ -703,7 +721,6 @@ function configurarBotaoCopiarPix() {
 
       try {
         await navigator.clipboard.writeText(textoPix);
-
         const textoOriginal = btnCopiar.textContent;
         btnCopiar.textContent = '✓ Copiado!';
         btnCopiar.style.background = '#2e7d32';
@@ -719,6 +736,41 @@ function configurarBotaoCopiarPix() {
   }
 }
 
+// ==========================================
+// 3. ENVIO DA INSCRIÇÃO PARA O SUPABASE
+// ==========================================
+async function salvarInscricao(dadosFormulario) {
+  try {
+    let valorFinal = 0;
+    if (opcaoSelecionada === 'sexta') valorFinal = parseFloat(loteAtivoAtual.preco_sexta);
+    else if (opcaoSelecionada === 'sabado') valorFinal = parseFloat(loteAtivoAtual.preco_sabado);
+    else valorFinal = parseFloat(loteAtivoAtual.preco_combo);
+
+    const payload = {
+      nome: dadosFormulario.nome,
+      email: dadosFormulario.email,
+      telefone: dadosFormulario.telefone,
+      tipo_ingresso: opcaoSelecionada, // Envia 'sexta', 'sabado' ou 'combo' (resolve o erro de null)
+      valor_pago: valorFinal,
+      lote_id: loteAtivoAtual ? loteAtivoAtual.id : null,
+      pin: dadosFormulario.pin,
+      comprovante_url: dadosFormulario.comprovante_url || null
+    };
+
+    const { data, error } = await window.supabaseClient
+      .from('inscricoes')
+      .insert([payload]);
+
+    if (error) throw error;
+
+    return { sucesso: true, data };
+  } catch (err) {
+    console.error('Erro ao salvar inscrição:', err);
+    return { sucesso: false, erro: err.message };
+  }
+}
+
+// Inicialização
 document.addEventListener('DOMContentLoaded', () => {
   carregarLoteAtivo();
   configurarBotaoCopiarPix();
