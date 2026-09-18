@@ -612,6 +612,17 @@ document.addEventListener('DOMContentLoaded', function () {
   // código e tenta de novo, até um número máximo de tentativas —
   // isso é extremamente raro (36^6 combinações), mas o código fica
   // preparado para o caso.
+    // Os únicos valores que a coluna "tipo_ingresso" aceita no banco.
+  const TIPOS_INGRESSO_VALIDOS = ['SEXTA', 'SABADO', 'COMBO'];
+
+  // Normaliza o tipo antes de gravar: tira espaços, força maiúsculas
+  // e confere contra a lista acima. Devolve null se o valor não for
+  // um dos três — assim a inscrição é abortada com uma mensagem
+  // clara em vez de estourar um erro de constraint do Postgres.
+  function normalizarTipoIngresso(valorBruto) {
+    const tipo = String(valorBruto || '').trim().toUpperCase();
+    return TIPOS_INGRESSO_VALIDOS.includes(tipo) ? tipo : null;
+  }
   async function inserirInscricaoComRetentativa(dadosBase, tentativasRestantes) {
     const codigo = gerarCodigoIngresso();
 
@@ -687,12 +698,28 @@ document.addEventListener('DOMContentLoaded', function () {
         btnConfirmarInscricao.textContent = 'Enviando...';
         const urlComprovante = await enviarComprovante(arquivo);
 
+                // Relê o card selecionado uma última vez, já que o usuário
+        // pode ter voltado ao Passo 1 e trocado de ingresso antes de
+        // confirmar. Garante que tipo e valor gravados são os mesmos
+        // que ele acabou de ver no resumo.
+        sincronizarEstadoComCardSelecionado();
+
+        const tipoIngressoValidado = normalizarTipoIngresso(estadoInscricao.tipoIngresso);
+        if (!tipoIngressoValidado) {
+          console.error(
+            '[inscricao.js] tipo_ingresso inválido no momento do INSERT:',
+            estadoInscricao.tipoIngresso
+          );
+          mostrarErro(erroResumo, 'Não foi possível identificar o ingresso selecionado. Volte e escolha a opção novamente.');
+          return;
+        }
+
         const dadosInscricao = {
           nome_completo: nomeCompleto,
           email: email,
           telefone: campoTelefone.value.trim(),
-          tipo_ingresso: estadoInscricao.tipoIngresso,
-          valor_pago: estadoInscricao.valor,
+          tipo_ingresso: tipoIngressoValidado,
+          valor_pago: Number(estadoInscricao.valor),
           status_pagamento: 'pendente',
           checkin_realizado: false,
           comprovante_url: urlComprovante,
@@ -700,6 +727,18 @@ document.addEventListener('DOMContentLoaded', function () {
         };
 
         const inscricaoCriada = await inserirInscricaoComRetentativa(dadosInscricao, 5);
+
+        // Confere se o tipo gravado é mesmo o que foi enviado. Uma
+        // divergência aqui indicaria problema do lado do banco
+        // (trigger, default, RLS) e não deve passar despercebida.
+        if (inscricaoCriada.tipo_ingresso !== tipoIngressoValidado) {
+          console.error(
+            '[inscricao.js] tipo_ingresso divergente após salvar — enviado:',
+            tipoIngressoValidado,
+            '| retornado pelo Supabase:',
+            inscricaoCriada.tipo_ingresso
+          );
+        }
 
         // IMPORTANTE: exibe o PIN que VOLTOU do banco
         // (inscricaoCriada.pin_seguranca), não o valor digitado no
