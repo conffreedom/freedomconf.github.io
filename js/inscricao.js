@@ -90,7 +90,85 @@ document.addEventListener('DOMContentLoaded', function () {
   if (comboInicial) {
     selecionarCombo(comboInicial);
   }
+  /* ----------------------------------------------------------
+     1.1) LOTE ATIVO: preços e chave Pix vindos do Supabase
+     ---------------------------------------------------------- */
 
+  const chavePixTextoEl = document.getElementById('chavePixTexto');
+
+  // Mapeia cada card do HTML (data-id) para a coluna correspondente
+  // da tabela "lotes". Se um dia surgir um novo tipo de ingresso,
+  // basta acrescentar a linha aqui.
+  const COLUNA_PRECO_POR_COMBO = {
+    SEXTA: 'preco_sexta',
+    SABADO: 'preco_sabado',
+    COMBO: 'preco_combo',
+  };
+
+  // Atualiza UM card: o atributo data-preco (fonte de verdade para o
+  // JS) e o texto visível dentro de .preco. O <small>/pessoa</small>
+  // é reconstruído junto para não se perder ao trocar o conteúdo.
+  function aplicarPrecoNoCard(comboEl, preco) {
+    comboEl.setAttribute('data-preco', Number(preco).toFixed(2));
+
+    const precoEl = comboEl.querySelector('.preco');
+    if (precoEl) {
+      precoEl.innerHTML = formatarMoeda(Number(preco)) + '<small>/pessoa</small>';
+    }
+  }
+
+  async function carregarLoteAtivo() {
+    if (!window.supabaseClient) return;
+
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('lotes')
+        .select('preco_sexta, preco_sabado, preco_combo, chave_pix')
+        .eq('ativo', true)
+        .limit(1)
+        .maybeSingle();
+
+      // Sem lote ativo cadastrado (ou erro na consulta): mantém os
+      // valores que já estão fixos no HTML, para a página nunca
+      // ficar sem preço nenhum na tela.
+      if (error) {
+        console.error('[inscricao.js] Erro ao carregar o lote ativo:', error);
+        return;
+      }
+      if (!data) {
+        console.warn('[inscricao.js] Nenhum lote ativo encontrado; mantendo os preços do HTML.');
+        return;
+      }
+
+      listaCombos.forEach(function (comboEl) {
+        const idCombo = comboEl.getAttribute('data-id');
+        const coluna = COLUNA_PRECO_POR_COMBO[idCombo];
+        const precoDoLote = coluna ? data[coluna] : null;
+
+        // Só sobrescreve quando o banco realmente trouxe um número
+        // válido — assim uma coluna nula/vazia não zera o card.
+        if (precoDoLote !== null && precoDoLote !== undefined && !isNaN(Number(precoDoLote))) {
+          aplicarPrecoNoCard(comboEl, precoDoLote);
+        }
+      });
+
+      if (chavePixTextoEl && data.chave_pix) {
+        chavePixTextoEl.textContent = data.chave_pix;
+      }
+
+      // Re-seleciona o card que já estava marcado para o
+      // estadoInscricao.valor e o #totalValor pegarem o preço novo
+      // (a seleção inicial rodou antes desta consulta terminar).
+      const comboSelecionado = document.querySelector('#combos .combo[data-selected="true"]') || comboInicial;
+      if (comboSelecionado) {
+        selecionarCombo(comboSelecionado);
+      }
+    } catch (erro) {
+      console.error('[inscricao.js] Falha inesperada ao carregar o lote ativo:', erro);
+    }
+  }
+
+  carregarLoteAtivo();
   /* ----------------------------------------------------------
      2) ELEMENTOS DOS 3 PASSOS DO FORMULÁRIO
      ---------------------------------------------------------- */
