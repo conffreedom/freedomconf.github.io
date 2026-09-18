@@ -1,114 +1,38 @@
 /* ============================================================
-   js/inscricao.js
-   ------------------------------------------------------------
-   Lógica do PORTAL DE INSCRIÇÃO (inscricao.html):
-     1) Seleção de ingresso (Sexta / Sábado / Combo);
-     2) Máscara de telefone e validação do formulário;
-     3) Botão "Copiar Chave Pix";
-     4) Checagem de inscrição duplicada (mesmo nome + e-mail);
-     5) PIN de segurança de 4 dígitos: máscara, dupla validação no
-        Passo 2 (precisa bater com a confirmação) e envio junto com
-        a inscrição, mapeado para a coluna "pin_seguranca";
-     6) Upload do comprovante de Pix para o Supabase Storage;
-     7) Geração do código único do ingresso e INSERT na tabela
-        "inscricoes" do Supabase (incluindo o PIN);
-     8) Tela de sucesso com status "Aguardando Validação do Pix" e
-        exibição do PIN cadastrado.
-
-   Depende de:
-     - js/supabase-client.js (expõe window.supabaseClient e
-       window.SUPABASE_COMPROVANTES_BUCKET), carregado ANTES
-       deste arquivo.
-
-   A contagem regressiva, o menu mobile e o scroll reveal da
-   Landing Page NÃO estão mais aqui — ver js/main.js. A consulta de
-   credencial (busca por e-mail/código, PIN por participante, QR
-   code, download em PNG) também NÃO está mais aqui — foi para
-   js/buscar.js, que roda em buscar.html. Este arquivo não depende
-   do QRCode.js.
-
-   Nenhuma troca de passo/tela neste arquivo dispara rolagem
-   automática (scrollIntoView) nem depende de âncoras "#" — a
-   navegação entre Passo 1 → 2 → 3 é feita só alternando
-   display:block/none, sem mover o scroll do usuário.
+   js/inscricao.js - Unificado e Corrigido
    ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function () {
   'use strict';
 
-  /* ----------------------------------------------------------
-     1) SELEÇÃO DE INGRESSO (combos)
-     ---------------------------------------------------------- */
+  // ==========================================
+  // ESTADO GLOBAL DA INSCRIÇÃO
+  // ==========================================
+  let loteAtivoAtual = null;
+  let opcaoSelecionada = 'combo'; // 'sexta', 'sabado' ou 'combo'
 
-  const NOMES_COMBO = {
-    SEXTA: 'Sexta-feira (30/10)',
-    SABADO: 'Sábado (31/10)',
-    COMBO: 'Sexta + Sábado',
+  const NOMES_OPCAO = {
+    sexta: 'Sexta-feira (30/10)',
+    sabado: 'Sábado (31/10)',
+    combo: 'Sexta + Sábado'
   };
 
-  const listaCombos = document.querySelectorAll('#combos .combo');
-  const totalValorEl = document.getElementById('totalValor');
-
-  // Estado da inscrição em andamento. É atualizado conforme o
-  // usuário navega pelos passos do formulário.
-  const estadoInscricao = {
-    tipoIngresso: 'COMBO',
-    valor: 25.0,
-  };
-
-  // Formata um número para o padrão monetário brasileiro (R$ 0,00).
-  function formatarMoeda(valor) {
-    return valor.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    });
-  }
-
-  function selecionarCombo(comboEl) {
-    listaCombos.forEach(function (c) {
-      c.removeAttribute('data-selected');
-    });
-    comboEl.setAttribute('data-selected', 'true');
-
-    estadoInscricao.tipoIngresso = comboEl.getAttribute('data-id');
-    estadoInscricao.valor = parseFloat(comboEl.getAttribute('data-preco'));
-
-    if (totalValorEl) {
-      totalValorEl.textContent = formatarMoeda(estadoInscricao.valor);
-    }
-  }
-
-  listaCombos.forEach(function (comboEl) {
-    comboEl.addEventListener('click', function () {
-      selecionarCombo(comboEl);
-    });
-  });
-
-  // Garante que o estado inicial (JS) bate com o combo já marcado
-  // como selecionado no HTML (data-selected="true").
-  const comboInicial = document.querySelector('#combos .combo[data-selected="true"]') || listaCombos[0];
-  if (comboInicial) {
-    selecionarCombo(comboInicial);
-  }
-
-  /* ----------------------------------------------------------
-     2) ELEMENTOS DOS 3 PASSOS DO FORMULÁRIO
-     ---------------------------------------------------------- */
-
+  // Elementos das telas
   const telaForm = document.getElementById('formInscricao');
   const telaResumo = document.getElementById('resumoPedido');
   const telaSucesso = document.getElementById('telaSucesso');
 
+  // Campos do Formulário
   const campoNome = document.getElementById('campoNome');
   const campoEmail = document.getElementById('campoEmail');
   const campoTelefone = document.getElementById('campoTelefone');
   const campoComprovante = document.getElementById('campoComprovante');
 
-  // Campos do PIN de segurança de 4 dígitos, preenchidos no Passo 2
-  // (tela de resumo) junto com a confirmação da inscrição.
+  // PIN
   const campoPin = document.getElementById('campoPin');
   const campoPinConfirma = document.getElementById('campoPinConfirma');
 
+  // Erros e Botões
   const erroInscricao = document.getElementById('erroInscricao');
   const erroComprovante = document.getElementById('erroComprovante');
   const erroResumo = document.getElementById('erroResumo');
@@ -118,19 +42,24 @@ document.addEventListener('DOMContentLoaded', function () {
   const btnConfirmarInscricao = document.getElementById('btnConfirmarInscricao');
   const btnNovaInscricao = document.getElementById('btnNovaInscricao');
 
+  // Resumo (Passo 2)
   const resumoNomeTxt = document.getElementById('resumoNomeTxt');
   const resumoComboTxt = document.getElementById('resumoComboTxt');
   const resumoComprovanteTxt = document.getElementById('resumoComprovanteTxt');
   const resumoValorTxt = document.getElementById('resumoValorTxt');
 
+  // Sucesso (Passo 3)
   const nomeSucesso = document.getElementById('nomeSucesso');
   const comboSucesso = document.getElementById('comboSucesso');
   const codigoSucesso = document.getElementById('codigoSucesso');
   const pinSucesso = document.getElementById('pinSucesso');
 
-  // Tamanho máximo aceito para o comprovante (5 MB) e tipos aceitos.
   const TAMANHO_MAXIMO_ARQUIVO = 5 * 1024 * 1024;
   const TIPOS_ACEITOS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'application/pdf'];
+
+  function formatarMoeda(valor) {
+    return (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
 
   function esconderTodasAsTelas() {
     if (telaForm) telaForm.style.display = 'none';
@@ -138,74 +67,112 @@ document.addEventListener('DOMContentLoaded', function () {
     if (telaSucesso) telaSucesso.style.display = 'none';
   }
 
-  function mostrarErro(elementoErro, mensagem) {
-    if (!elementoErro) return;
-    elementoErro.textContent = mensagem;
-    elementoErro.style.display = 'block';
+  function mostrarErro(elemento, msg) {
+    if (!elemento) return;
+    elemento.textContent = msg;
+    elemento.style.display = 'block';
   }
 
-  function esconderErro(elementoErro) {
-    if (!elementoErro) return;
-    elementoErro.style.display = 'none';
-    elementoErro.textContent = '';
+  function esconderErro(elemento) {
+    if (!elemento) return;
+    elemento.style.display = 'none';
+    elemento.textContent = '';
   }
 
-  /* ----------------------------------------------------------
-     3) MÁSCARA DE TELEFONE
-     ---------------------------------------------------------- */
+  // ==========================================
+  // 1. CARREGAR LOTE ATIVO DO SUPABASE
+  // ==========================================
+  async function carregarLoteAtivo() {
+    try {
+      const { data: lote, error } = await window.supabaseClient
+        .from('lotes')
+        .select('*')
+        .eq('ativo', true)
+        .single();
 
-  // Formata os dígitos digitados como (00) 00000-0000 (celular, 11
-  // dígitos) ou (00) 0000-0000 (fixo, 10 dígitos), conforme a
-  // quantidade de números já digitada. Qualquer caractere que não
-  // seja dígito é descartado — é assim que letras ficam bloqueadas.
-  function aplicarMascaraTelefone(valorBruto) {
-    const digitos = valorBruto.replace(/\D/g, '').slice(0, 11);
+      const containerPix = document.getElementById('containerPix');
+      const msgEsgotado = document.getElementById('mensagemEsgotado');
 
-    if (digitos.length === 0) return '';
-    if (digitos.length <= 2) return '(' + digitos;
+      if (error || !lote) {
+        console.warn('Nenhum lote ativo encontrado:', error);
+        if (containerPix) containerPix.style.display = 'none';
+        if (msgEsgotado) msgEsgotado.style.display = 'block';
+        return;
+      }
 
-    const ddd = digitos.slice(0, 2);
-    const restante = digitos.slice(2);
+      loteAtivoAtual = lote;
 
-    // Até 10 dígitos no total (2 do DDD + 8 do número): formato de
-    // telefone fixo, bloco de 4 + 4. Com 11 dígitos: celular, 5 + 4.
-    const tamanhoPrimeiroBloco = digitos.length <= 10 ? 4 : 5;
-    const primeiroBloco = restante.slice(0, tamanhoPrimeiroBloco);
-    const segundoBloco = restante.slice(tamanhoPrimeiroBloco);
+      const elNome = document.getElementById('nomeLoteExibicao');
+      if (elNome) elNome.textContent = lote.nome;
 
-    let resultado = '(' + ddd + ') ' + primeiroBloco;
-    if (segundoBloco) resultado += '-' + segundoBloco;
-    return resultado;
+      const cardSelecionado = document.querySelector('.combo.selecionado') || document.querySelector('.combo');
+      const tipoInicial = cardSelecionado ? cardSelecionado.getAttribute('data-tipo') : 'combo';
+
+      atualizarDetalhesIngresso(tipoInicial);
+      configurarSelecaoDeCombos();
+
+    } catch (err) {
+      console.error('Erro ao carregar lote ativo:', err);
+    }
   }
 
+  function obterValorAtual() {
+    if (!loteAtivoAtual) return 25.0;
+    if (opcaoSelecionada === 'sexta') return parseFloat(loteAtivoAtual.preco_sexta ?? loteAtivoAtual.preco_combo ?? 0);
+    if (opcaoSelecionada === 'sabado') return parseFloat(loteAtivoAtual.preco_sabado ?? loteAtivoAtual.preco_combo ?? 0);
+    return parseFloat(loteAtivoAtual.preco_combo ?? 0);
+  }
+
+  function atualizarDetalhesIngresso(tipo) {
+    opcaoSelecionada = tipo || 'combo';
+    const valor = obterValorAtual();
+
+    let chavePix = '';
+    if (loteAtivoAtual) {
+      if (opcaoSelecionada === 'sexta') chavePix = loteAtivoAtual.chave_pix_sexta || loteAtivoAtual.chave_pix_combo;
+      else if (opcaoSelecionada === 'sabado') chavePix = loteAtivoAtual.chave_pix_sabado || loteAtivoAtual.chave_pix_combo;
+      else chavePix = loteAtivoAtual.chave_pix_combo;
+    }
+
+    const totalValorEl = document.getElementById('totalValor');
+    if (totalValorEl) totalValorEl.textContent = formatarMoeda(valor);
+
+    const elPix = document.getElementById('chavePixTexto');
+    if (elPix && chavePix) elPix.textContent = chavePix;
+  }
+
+  function configurarSelecaoDeCombos() {
+    const combos = document.querySelectorAll('.combo');
+    combos.forEach(combo => {
+      combo.addEventListener('click', () => {
+        combos.forEach(c => c.classList.remove('selecionado'));
+        combo.add
+        combo.classList.add('selecionado');
+        atualizarDetalhesIngresso(combo.getAttribute('data-tipo'));
+      });
+    });
+  }
+
+  // ==========================================
+  // 2. MÁSCARAS E VALIDAÇÕES
+  // ==========================================
   if (campoTelefone) {
-    campoTelefone.setAttribute('maxlength', '15');
-    campoTelefone.setAttribute('inputmode', 'numeric');
-    campoTelefone.addEventListener('input', function (evento) {
-      evento.target.value = aplicarMascaraTelefone(evento.target.value);
+    campoTelefone.addEventListener('input', function (e) {
+      let digitos = e.target.value.replace(/\D/g, '').slice(0, 11);
+      if (digitos.length <= 2) e.target.value = digitos ? '(' + digitos : '';
+      else if (digitos.length <= 6) e.target.value = '(' + digitos.slice(0, 2) + ') ' + digitos.slice(2);
+      else if (digitos.length <= 10) e.target.value = '(' + digitos.slice(0, 2) + ') ' + digitos.slice(2, 6) + '-' + digitos.slice(6);
+      else e.target.value = '(' + digitos.slice(0, 2) + ') ' + digitos.slice(2, 7) + '-' + digitos.slice(7);
     });
   }
 
-  /* ----------------------------------------------------------
-     3.1) MÁSCARA DO PIN DE SEGURANÇA (4 dígitos numéricos)
-     ---------------------------------------------------------- */
-
-  // Mesmo princípio da máscara de telefone: descarta qualquer
-  // caractere que não seja dígito e trava em 4 posições, nos dois
-  // campos (PIN e confirmação), para o usuário nunca conseguir
-  // digitar letra ou um PIN maior que o esperado.
-  [campoPin, campoPinConfirma].forEach(function (campo) {
-    if (!campo) return;
-    campo.setAttribute('maxlength', '4');
-    campo.setAttribute('inputmode', 'numeric');
-    campo.setAttribute('autocomplete', 'off');
-    campo.addEventListener('input', function (evento) {
-      evento.target.value = evento.target.value.replace(/\D/g, '').slice(0, 4);
-    });
+  [campoPin, campoPinConfirma].forEach(campo => {
+    if (campo) {
+      campo.addEventListener('input', e => {
+        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+      });
+    }
   });
-  /* ----------------------------------------------------------
-     5) PASSO 1 → PASSO 2: validação dos dados e do comprovante
-     ---------------------------------------------------------- */
 
   function validarPasso1() {
     esconderErro(erroInscricao);
@@ -222,16 +189,14 @@ document.addEventListener('DOMContentLoaded', function () {
       return false;
     }
 
-    const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!emailValido) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       mostrarErro(erroInscricao, 'Informe um e-mail válido.');
       campoEmail.focus();
       return false;
     }
 
-    const somenteDigitosTelefone = telefone.replace(/\D/g, '');
-    if (somenteDigitosTelefone.length < 10) {
-      mostrarErro(erroInscricao, 'Informe um telefone válido, com DDD.');
+    if (telefone.replace(/\D/g, '').length < 10) {
+      mostrarErro(erroInscricao, 'Informe um telefone válido com DDD.');
       campoTelefone.focus();
       return false;
     }
@@ -242,7 +207,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (!TIPOS_ACEITOS.includes(arquivo.type)) {
-      mostrarErro(erroComprovante, 'Formato inválido. Envie uma imagem (PNG/JPG) ou um PDF.');
+      mostrarErro(erroComprovante, 'Formato inválido. Envie imagem (PNG/JPG) ou PDF.');
       return false;
     }
 
@@ -254,20 +219,40 @@ document.addEventListener('DOMContentLoaded', function () {
     return true;
   }
 
+  function validarPin() {
+    const pin = campoPin ? campoPin.value.trim() : '';
+    const pinConfirma = campoPinConfirma ? campoPinConfirma.value.trim() : '';
+
+    if (!/^\d{4}$/.test(pin)) {
+      mostrarErro(erroResumo, 'Crie um PIN de segurança com exatamente 4 números.');
+      if (campoPin) campoPin.focus();
+      return null;
+    }
+
+    if (pin !== pinConfirma) {
+      mostrarErro(erroResumo, 'Os dois PINs digitados não coincidem.');
+      if (campoPinConfirma) campoPinConfirma.focus();
+      return null;
+    }
+
+    return pin;
+  }
+
+  // ==========================================
+  // 3. TRANSIÇÃO DE PASSOS
+  // ==========================================
   if (btnIrPagamento) {
     btnIrPagamento.addEventListener('click', function () {
       if (!validarPasso1()) return;
 
-      // Preenche o resumo com os dados já validados.
-      resumoNomeTxt.textContent = campoNome.value.trim();
-      resumoComboTxt.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso;
-      resumoComprovanteTxt.textContent = campoComprovante.files[0].name;
-      resumoValorTxt.textContent = formatarMoeda(estadoInscricao.valor);
+      // Preenche o resumo no Passo 2
+      if (resumoNomeTxt) resumoNomeTxt.textContent = campoNome.value.trim();
+      if (resumoComboTxt) resumoComboTxt.textContent = NOMES_OPCAO[opcaoSelecionada] || opcaoSelecionada;
+      if (resumoComprovanteTxt) resumoComprovanteTxt.textContent = campoComprovante.files[0].name;
+      if (resumoValorTxt) resumoValorTxt.textContent = formatarMoeda(obterValorAtual());
 
       esconderTodasAsTelas();
       telaResumo.style.display = 'block';
-      // Sem scrollIntoView: a troca de passo só alterna qual card
-      // está visível, mantendo a posição de rolagem do usuário.
     });
   }
 
@@ -279,303 +264,87 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  /* ----------------------------------------------------------
-     6) CHECAGEM DE INSCRIÇÃO DUPLICADA
-     ---------------------------------------------------------- */
-
-  // Considera duplicidade apenas quando NOME COMPLETO e E-MAIL são
-  // ambos exatamente iguais a uma inscrição já existente. Se o
-  // e-mail se repetir com um nome diferente (ex.: alguém inscrevendo
-  // um familiar com o mesmo e-mail de contato), a inscrição segue
-  // normalmente — só o par (nome, e-mail) precisa ser único.
-  async function existeInscricaoDuplicada(nomeCompleto, email) {
-    const { data, error } = await window.supabaseClient
-      .from('inscricoes')
-      .select('id')
-      .eq('nome_completo', nomeCompleto)
-      .eq('email', email)
-      .limit(1);
-
-    if (error) {
-      // Se a checagem em si falhar (ex.: instabilidade de rede),
-      // não travamos a inscrição por causa disso — deixamos seguir
-      // e uma eventual duplicidade é tratada manualmente pela
-      // equipe no painel administrativo.
-      console.error('[inscricao.js] Erro ao checar duplicidade:', error);
-      return false;
-    }
-
-    return Array.isArray(data) && data.length > 0;
-  }
-
-  /* ----------------------------------------------------------
-     7) GERAÇÃO DO CÓDIGO DO INGRESSO
-     ---------------------------------------------------------- */
-
-  // Gera um código no formato "FC2026-XXXXXX", usando apenas
-  // letras maiúsculas e números para facilitar leitura e digitação
-  // manual na portaria, caso o QR code não possa ser lido.
+  // ==========================================
+  // 4. ENVIO FINAL PARA O SUPABASE
+  // ==========================================
   function gerarCodigoIngresso() {
-    const caracteres = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem O/0/I/1 (evita confusão visual)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let sufixo = '';
-    for (let i = 0; i < 6; i++) {
-      const indice = Math.floor(Math.random() * caracteres.length);
-      sufixo += caracteres[indice];
-    }
+    for (let i = 0; i < 6; i++) sufixo += chars[Math.floor(Math.random() * chars.length)];
     return 'FC2026-' + sufixo;
   }
 
-  // Simplifica a extração da extensão do arquivo — mantém a
-  // extensão original (em minúsculas) ou usa ".png" como
-  // fallback caso o arquivo não tenha extensão reconhecível.
-  function obterExtensao(nomeOriginal) {
-    const partes = nomeOriginal.split('.');
-    return partes.length > 1 ? '.' + partes.pop().toLowerCase() : '.png';
-  }
-
-  // Extrai a melhor mensagem de diagnóstico disponível de um erro,
-  // seja ele um Error do JavaScript ou um objeto de erro retornado
-  // pelo Supabase (que às vezes usa "message" e às vezes
-  // "error_description"). Sempre retorna uma string, nunca undefined.
-  function obterMensagemErro(erro, fallback) {
-    if (!erro) return fallback;
-    if (typeof erro === 'string') return erro;
-    return erro.message || erro.error_description || fallback;
-  }
-
-  // Lê o arquivo como ArrayBuffer antes do upload. Isso evita uma
-  // falha conhecida em navegadores mobile (principalmente Safari no
-  // iOS e alguns WebViews no Android): quando o objeto File é
-  // repassado diretamente para o upload, o corpo da requisição às
-  // vezes não é lido corretamente pelo fetch/stream interno desses
-  // navegadores, e a chamada fica "pendurada" por vários segundos
-  // até falhar. Convertendo para ArrayBuffer, o conteúdo do arquivo
-  // já está todo em memória antes do envio, então o upload passa a
-  // se comportar da mesma forma em desktop e em mobile.
-  function lerArquivoComoArrayBuffer(arquivo) {
-    return new Promise(function (resolve, reject) {
-      const leitor = new FileReader();
-      leitor.onload = function () {
-        resolve(leitor.result);
-      };
-      leitor.onerror = function () {
-        reject(new Error('Não foi possível ler o arquivo do comprovante neste dispositivo.'));
-      };
-      leitor.readAsArrayBuffer(arquivo);
-    });
-  }
-
-  /* ----------------------------------------------------------
-     7.1) PIN DE SEGURANÇA: dupla validação (Passo 2)
-     ---------------------------------------------------------- */
-
-  // Confere se o PIN tem exatamente 4 dígitos numéricos e se os
-  // dois campos (PIN e confirmação) são idênticos. Retorna o PIN
-  // validado (string) em caso de sucesso, ou null se houver erro —
-  // já mostrando a mensagem correspondente em #erroResumo e focando
-  // o campo problemático, para o botão "Confirmar inscrição" poder
-  // simplesmente checar "if (!pin) return;".
-  function validarPin() {
-    const pin = campoPin ? campoPin.value.trim() : '';
-    const pinConfirma = campoPinConfirma ? campoPinConfirma.value.trim() : '';
-
-    const pinNumericoDe4Digitos = /^\d{4}$/.test(pin);
-    if (!pinNumericoDe4Digitos) {
-      mostrarErro(erroResumo, 'Crie um PIN de segurança com exatamente 4 números.');
-      if (campoPin) campoPin.focus();
-      return null;
-    }
-
-    if (pin !== pinConfirma) {
-      mostrarErro(erroResumo, 'Os dois PINs digitados não coincidem. Confira e tente novamente.');
-      if (campoPinConfirma) campoPinConfirma.focus();
-      return null;
-    }
-
-    return pin;
-  }
-
-  /* ----------------------------------------------------------
-     8) PASSO 2 → PASSO 3: upload do comprovante + INSERT
-     ---------------------------------------------------------- */
-
-  // Faz upload do arquivo para o bucket "comprovantes" e devolve a
-  // URL pública do arquivo salvo. O nome do arquivo é gerado só com
-  // carimbo de data/hora + número aleatório + extensão — sem
-  // depender de normalizar o nome original — o que evita hífens
-  // repetidos e caracteres que o Storage do Supabase rejeita em
-  // alguns navegadores/idiomas. "upsert: true" evita erro 400 em
-  // caso de qualquer conflito de nome (colisão extremamente rara,
-  // já que o nome já é único por natureza). O conteúdo é enviado
-  // como ArrayBuffer (ver lerArquivoComoArrayBuffer acima) para
-  // manter compatibilidade com navegadores mobile; como o
-  // ArrayBuffer sozinho não carrega o tipo MIME, "contentType" é
-  // informado explicitamente a partir do arquivo original.
   async function enviarComprovante(arquivo) {
-    const extensao = obterExtensao(arquivo.name);
-    const nomeArquivoUnico = `comprovante_${Date.now()}_${Math.floor(Math.random() * 10000)}${extensao}`;
+    const ext = arquivo.name.split('.').pop().toLowerCase();
+    const nomeArquivo = `comprovante_${Date.now()}_${Math.floor(Math.random() * 10000)}.${ext}`;
 
-    const conteudoArquivo = await lerArquivoComoArrayBuffer(arquivo);
-
-    const { error: erroUpload } = await window.supabaseClient.storage
+    const { error } = await window.supabaseClient.storage
       .from(window.SUPABASE_COMPROVANTES_BUCKET)
-      .upload(nomeArquivoUnico, conteudoArquivo, {
-        cacheControl: '3600',
-        upsert: true,
-        contentType: arquivo.type || 'application/octet-stream',
-      });
+      .upload(nomeArquivo, arquivo, { cacheControl: '3600', upsert: true });
 
-    if (erroUpload) {
-      throw new Error('Falha ao enviar o comprovante: ' + obterMensagemErro(erroUpload, 'erro desconhecido no upload.'));
-    }
+    if (error) throw new Error('Falha ao enviar comprovante: ' + error.message);
 
-    const { data: dadosUrlPublica } = window.supabaseClient.storage
+    return window.supabaseClient.storage
       .from(window.SUPABASE_COMPROVANTES_BUCKET)
-      .getPublicUrl(nomeArquivoUnico);
-
-    return dadosUrlPublica.publicUrl;
-  }
-
-  // Tenta inserir a inscrição no banco. Se o código gerado já
-  // existir (colisão, code 23505 = unique_violation), gera um novo
-  // código e tenta de novo, até um número máximo de tentativas —
-  // isso é extremamente raro (36^6 combinações), mas o código fica
-  // preparado para o caso.
-  async function inserirInscricaoComRetentativa(dadosBase, tentativasRestantes) {
-    const codigo = gerarCodigoIngresso();
-
-    const { data, error } = await window.supabaseClient
-      .from('inscricoes')
-      .insert([Object.assign({}, dadosBase, { codigo_ingresso: codigo })])
-      .select()
-      .single();
-
-    if (!error) {
-      return data;
-    }
-
-    const eraColisaoDeCodigo = error.code === '23505';
-    if (eraColisaoDeCodigo && tentativasRestantes > 0) {
-      return inserirInscricaoComRetentativa(dadosBase, tentativasRestantes - 1);
-    }
-
-    throw new Error('Falha ao salvar a inscrição: ' + obterMensagemErro(error, 'erro desconhecido ao gravar no banco.'));
+      .getPublicUrl(nomeArquivo).data.publicUrl;
   }
 
   if (btnConfirmarInscricao) {
-    btnConfirmarInscricao.addEventListener('click', async function (evento) {
-      // Dispara de forma síncrona, ANTES de qualquer código
-      // assíncrono: evita que o clique acione algum comportamento
-      // padrão do navegador (relevante sobretudo em mobile, onde
-      // toques podem disparar eventos extras) e garante que o botão
-      // já nasça bloqueado antes de qualquer "await" rodar.
-      if (evento && typeof evento.preventDefault === 'function') {
-        evento.preventDefault();
-      }
-
-      // Se o botão já está desabilitado, uma segunda batida de dedo
-      // (comum em telas sensíveis, ou no delay de ~300ms de alguns
-      // navegadores mobile) é ignorada — impede disparar duas
-      // inscrições/uploads em paralelo para o mesmo clique.
+    btnConfirmarInscricao.addEventListener('click', async function (e) {
+      if (e && e.preventDefault) e.preventDefault();
       if (btnConfirmarInscricao.disabled) return;
 
       esconderErro(erroResumo);
-
-      // Valida o PIN ANTES de desabilitar o botão/travar a tela: se
-      // estiver errado, a pessoa corrige e clica de novo sem nenhum
-      // upload ou chamada ao Supabase ter sido feita.
       const pinValidado = validarPin();
       if (!pinValidado) return;
 
       btnConfirmarInscricao.disabled = true;
-      const textoOriginalBotao = btnConfirmarInscricao.textContent;
-
-      const arquivo = campoComprovante.files[0];
-      if (!arquivo) {
-        // Segurança extra: se por algum motivo o arquivo não estiver
-        // mais disponível (ex.: usuário voltou e trocou o campo),
-        // manda de volta para o passo 1 em vez de prosseguir.
-        mostrarErro(erroResumo, 'O comprovante não foi encontrado. Volte e anexe novamente.');
-        btnConfirmarInscricao.disabled = false;
-        return;
-      }
-
-      const nomeCompleto = campoNome.value.trim();
-      const email = campoEmail.value.trim();
+      btnConfirmarInscricao.textContent = 'Enviando...';
 
       try {
-        // Checa duplicidade ANTES de subir o arquivo e gravar
-        // qualquer coisa no banco — evita upload desnecessário.
-        btnConfirmarInscricao.textContent = 'Verificando...';
-        const duplicada = await existeInscricaoDuplicada(nomeCompleto, email);
-        if (duplicada) {
-          mostrarErro(erroResumo, 'Já existe uma inscrição realizada com este Nome e E-mail.');
-          return;
-        }
-
-        btnConfirmarInscricao.textContent = 'Enviando...';
+        const arquivo = campoComprovante.files[0];
         const urlComprovante = await enviarComprovante(arquivo);
 
         const dadosInscricao = {
-          nome_completo: nomeCompleto,
-          email: email,
+          nome_completo: campoNome.value.trim(),
+          email: campoEmail.value.trim(),
           telefone: campoTelefone.value.trim(),
-          tipo_ingresso: estadoInscricao.tipoIngresso,
-          valor_pago: estadoInscricao.valor,
+          tipo_ingresso: opcaoSelecionada, // <-- Envia exatamente 'sexta', 'sabado' ou 'combo'
+          valor_pago: obterValorAtual(),
           status_pagamento: 'pendente',
           checkin_realizado: false,
           comprovante_url: urlComprovante,
           pin_seguranca: pinValidado,
+          codigo_ingresso: gerarCodigoIngresso(),
+          lote_id: loteAtivoAtual ? loteAtivoAtual.id : null
         };
 
-        const inscricaoCriada = await inserirInscricaoComRetentativa(dadosInscricao, 5);
+        const { data, error } = await window.supabaseClient
+          .from('inscricoes')
+          .insert([dadosInscricao])
+          .select()
+          .single();
 
-        // IMPORTANTE: exibe o PIN que VOLTOU do banco
-        // (inscricaoCriada.pin_seguranca), não o valor digitado no
-        // formulário. Mostrar sempre "pinValidado" aqui mascararia
-        // silenciosamente qualquer problema de gravação — a pessoa
-        // veria o PIN certo na tela mesmo que, por algum motivo do
-        // lado do banco (RLS, trigger, nome de coluna), o valor
-        // salvo tivesse ficado null. Registrar essa divergência no
-        // console também ajuda a equipe a flagrar o problema cedo.
-        if (inscricaoCriada.pin_seguranca !== pinValidado) {
-          console.error(
-            '[inscricao.js] PIN divergente após salvar a inscrição — enviado:',
-            pinValidado,
-            '| retornado pelo Supabase:',
-            inscricaoCriada.pin_seguranca
-          );
-        }
+        if (error) throw new Error('Falha ao salvar inscrição: ' + error.message);
 
-        // Preenche e exibe a tela de sucesso. O pagamento ainda
-        // depende de conferência manual, então nenhum QR code é
-        // gerado aqui — só o código em texto e o PIN cadastrado,
-        // como referência.
-        nomeSucesso.textContent = nomeCompleto.split(' ')[0];
-        comboSucesso.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso;
-        codigoSucesso.textContent = inscricaoCriada.codigo_ingresso;
-        if (pinSucesso) pinSucesso.textContent = inscricaoCriada.pin_seguranca;
+        // Preenche tela de sucesso
+        if (nomeSucesso) nomeSucesso.textContent = dadosInscricao.nome_completo.split(' ')[0];
+        if (comboSucesso) comboSucesso.textContent = NOMES_OPCAO[opcaoSelecionada] || opcaoSelecionada;
+        if (codigoSucesso) codigoSucesso.textContent = data.codigo_ingresso;
+        if (pinSucesso) pinSucesso.textContent = data.pin_seguranca;
 
         esconderTodasAsTelas();
         telaSucesso.style.display = 'block';
-        // Sem scrollIntoView: mantém a posição de rolagem do
-        // usuário ao trocar para a tela de sucesso.
-      } catch (erro) {
-        // Mostra a mensagem REAL do erro (não uma genérica), para
-        // diagnosticar problemas específicos de dispositivo/rede
-        // relatados pelos usuários em campo.
-        console.error('[inscricao.js] Erro ao confirmar inscrição:', erro);
-        mostrarErro(erroResumo, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
+
+      } catch (err) {
+        console.error('Erro no processo de inscrição:', err);
+        mostrarErro(erroResumo, err.message || 'Erro ao processar inscrição.');
       } finally {
         btnConfirmarInscricao.disabled = false;
-        btnConfirmarInscricao.textContent = textoOriginalBotao;
+        btnConfirmarInscricao.textContent = '💠 Confirmar inscrição';
       }
     });
   }
-
-  /* ----------------------------------------------------------
-     9) "FAZER OUTRA INSCRIÇÃO": reseta o formulário
-     ---------------------------------------------------------- */
 
   if (btnNovaInscricao) {
     btnNovaInscricao.addEventListener('click', function () {
@@ -585,185 +354,14 @@ document.addEventListener('DOMContentLoaded', function () {
       campoComprovante.value = '';
       if (campoPin) campoPin.value = '';
       if (campoPinConfirma) campoPinConfirma.value = '';
-      esconderErro(erroInscricao);
-      esconderErro(erroComprovante);
-      esconderErro(erroResumo);
-
-      selecionarCombo(comboInicial || listaCombos[0]);
 
       esconderTodasAsTelas();
       telaForm.style.display = 'block';
-      // Sem scrollIntoView: volta para o Passo 1 sem forçar rolagem.
     });
   }
-});
-// ==========================================
-// ESTADO GLOBAL DA INSCRIÇÃO
-// ==========================================
-let loteAtivoAtual = null;
-let opcaoSelecionada = 'combo'; // Opção padrão inicial
 
-// ==========================================
-// 1. CARREGAR LOTE ATIVO DO SUPABASE
-// ==========================================
-async function carregarLoteAtivo() {
-  try {
-    const { data: lote, error } = await window.supabaseClient
-      .from('lotes')
-      .select('*')
-      .eq('ativo', true)
-      .single();
-
-    const containerPix = document.getElementById('containerPix');
-    const msgEsgotado = document.getElementById('mensagemEsgotado');
-
-    if (error || !lote) {
-      console.warn('Nenhum lote ativo encontrado:', error);
-      if (containerPix) containerPix.style.display = 'none';
-      if (msgEsgotado) msgEsgotado.style.display = 'block';
-      return;
-    }
-
-    loteAtivoAtual = lote;
-
-    // Exibe o nome do lote (ex: "1º Lote")
-    const elNome = document.getElementById('nomeLoteExibicao');
-    if (elNome) elNome.textContent = lote.nome;
-
-    // Verifica se algum card já veio selecionado no HTML
-    const cardSelecionado = document.querySelector('.combo.selecionado') || document.querySelector('.combo');
-    const tipoInicial = cardSelecionado ? cardSelecionado.getAttribute('data-tipo') : 'combo';
-
-    atualizarDetalhesIngresso(tipoInicial);
-    configurarSelecaoDeCombos();
-
-  } catch (err) {
-    console.error('Erro ao carregar lote ativo:', err);
-  }
-}
-
-// ==========================================
-// 2. ATUALIZAR PREÇO E PIX (PASSO 1)
-// ==========================================
-function atualizarDetalhesIngresso(tipo) {
-  if (!loteAtivoAtual) return;
-
-  opcaoSelecionada = tipo || 'combo';
-
-  let valor = 0;
-  let chavePix = '';
-
-  if (opcaoSelecionada === 'sexta') {
-    valor = parseFloat(loteAtivoAtual.preco_sexta ?? loteAtivoAtual.preco_combo ?? 0);
-    chavePix = loteAtivoAtual.chave_pix_sexta || loteAtivoAtual.chave_pix_combo;
-  } else if (opcaoSelecionada === 'sabado') {
-    valor = parseFloat(loteAtivoAtual.preco_sabado ?? loteAtivoAtual.preco_combo ?? 0);
-    chavePix = loteAtivoAtual.chave_pix_sabado || loteAtivoAtual.chave_pix_combo;
-  } else {
-    valor = parseFloat(loteAtivoAtual.preco_combo ?? 0);
-    chavePix = loteAtivoAtual.chave_pix_combo;
-  }
-
-  // Preço no Passo 1
-  const elPreco = document.getElementById('totalValor');
-  if (elPreco) {
-    elPreco.textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
-  }
-
-  // Chave Pix
-  const elPix = document.getElementById('chavePixTexto');
-  if (elPix) {
-    elPix.textContent = chavePix || 'Chave indisponível';
-  }
-}
-
-// Escuta os cliques nos cards (Sexta, Sábado, Combo)
-function configurarSelecaoDeCombos() {
-  const combos = document.querySelectorAll('.combo');
-
-  combos.forEach(combo => {
-    combo.addEventListener('click', () => {
-      combos.forEach(c => c.classList.remove('selecionado'));
-      combo.classList.add('selecionado');
-
-      const tipo = combo.getAttribute('data-tipo');
-      atualizarDetalhesIngresso(tipo);
-    });
-  });
-}
-
-// Botão para copiar a Chave Pix
-function configurarBotaoCopiarPix() {
-  const btnCopiar = document.getElementById('btnCopiarPix');
-
-  if (btnCopiar) {
-    btnCopiar.addEventListener('click', async () => {
-      const elPix = document.getElementById('chavePixTexto');
-      const textoPix = elPix ? elPix.textContent.trim() : '';
-
-      if (!textoPix || textoPix.includes('Carregando') || textoPix === 'Chave indisponível') return;
-
-      try {
-        await navigator.clipboard.writeText(textoPix);
-        const textoOriginal = btnCopiar.textContent;
-        btnCopiar.textContent = '✓ Copiado!';
-        btnCopiar.style.background = '#2e7d32';
-
-        setTimeout(() => {
-          btnCopiar.textContent = textoOriginal;
-          btnCopiar.style.background = '';
-        }, 2000);
-      } catch (err) {
-        console.error('Erro ao copiar chave Pix:', err);
-      }
-    });
-  }
-}
-
-// ==========================================
-// 3. PREENCHER RESUMO COM IDs CORRETOS (PASSO 2)
-// ==========================================
-function atualizarResumoPasso2() {
-  if (!loteAtivoAtual) return;
-
-  let valorFinal = 0;
-  let tipoTexto = 'Combo (Sexta + Sábado)';
-
-  if (opcaoSelecionada === 'sexta') {
-    valorFinal = parseFloat(loteAtivoAtual.preco_sexta ?? loteAtivoAtual.preco_combo ?? 0);
-    tipoTexto = 'Sexta-feira';
-  } else if (opcaoSelecionada === 'sabado') {
-    valorFinal = parseFloat(loteAtivoAtual.preco_sabado ?? loteAtivoAtual.preco_combo ?? 0);
-    tipoTexto = 'Sábado';
-  } else {
-    valorFinal = parseFloat(loteAtivoAtual.preco_combo ?? 0);
-    tipoTexto = 'Combo (Sexta + Sábado)';
-  }
-
-  // Preenche o Nome usando o ID resumoNomeTxt
-  const elNomeInput = document.getElementById('nomeInput') || document.querySelector('input[type="text"]');
-  const elNomeTxt = document.getElementById('resumoNomeTxt');
-  if (elNomeTxt && elNomeInput) {
-    elNomeTxt.textContent = elNomeInput.value || '-';
-  }
-
-  // Preenche a Opção usando o ID resumoComboTxt
-  const elComboTxt = document.getElementById('resumoComboTxt');
-  if (elComboTxt) {
-    elComboTxt.textContent = tipoTexto;
-  }
-
-  // Preenche o Valor usando o ID resumoValorTxt
-  const elValorTxt = document.getElementById('resumoValorTxt');
-  if (elValorTxt) {
-    elValorTxt.textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorFinal);
-  }
-}
-
-// ==========================================
-// 4. INICIALIZAÇÃO AUTOMÁTICA
-// ==========================================
-document.addEventListener('DOMContentLoaded', () => {
+  // ==========================================
+  // INICIALIZAÇÃO
+  // ==========================================
   carregarLoteAtivo();
-  configurarBotaoCopiarPix();
 });
