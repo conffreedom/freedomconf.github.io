@@ -605,7 +605,8 @@ let loteAtivoAtual = null;
 
 async function carregarLoteAtivo() {
   try {
-    const { data: lote, error } = await supabase
+    // Utiliza a variável global window.supabaseClient definida no projeto
+    const { data: lote, error } = await window.supabaseClient
       .from('lotes')
       .select('*')
       .eq('ativo', true)
@@ -613,31 +614,52 @@ async function carregarLoteAtivo() {
 
     const containerPix = document.getElementById('containerPix');
     const msgEsgotado = document.getElementById('mensagemEsgotado');
-    const btnIrPagamento = document.getElementById('btnIrPagamento');
 
     if (error || !lote) {
-      console.warn('Nenhum lote ativo encontrado.');
+      console.warn('Nenhum lote ativo encontrado:', error);
       if (containerPix) containerPix.style.display = 'none';
       if (msgEsgotado) msgEsgotado.style.display = 'block';
-      if (btnIrPagamento) btnIrPagamento.style.display = 'none';
       return;
     }
 
     loteAtivoAtual = lote;
 
+    // Atualiza Nome do Lote e Chave Pix
     const elNome = document.getElementById('nomeLoteExibicao');
     if (elNome) elNome.textContent = lote.nome;
-
-    const precoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lote.preco);
-    const elPreco = document.getElementById('totalValor');
-    if (elPreco) elPreco.textContent = precoFormatado;
 
     const elPix = document.getElementById('chavePixTexto');
     if (elPix) elPix.textContent = lote.chave_pix || 'Chave indisponível';
 
+    // Atualiza o Preço Inicial na interface
+    atualizarPrecoTotal(lote.preco);
+
+    // Configura os cliques nos cartões de ingresso
+    configurarSelecaoDeCombos(lote.preco);
+
   } catch (err) {
     console.error('Erro ao carregar lote ativo:', err);
   }
+}
+
+function atualizarPrecoTotal(valor) {
+  const elPreco = document.getElementById('totalValor');
+  if (elPreco) {
+    const precoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+    elPreco.textContent = precoFormatado;
+  }
+}
+
+function configurarSelecaoDeCombos(precoLoteBase) {
+  const combos = document.querySelectorAll('.combo');
+  
+  combos.forEach(combo => {
+    combo.addEventListener('click', () => {
+      const precoCard = combo.getAttribute('data-preco');
+      const valorFinal = precoCard ? parseFloat(precoCard) : precoLoteBase;
+      atualizarPrecoTotal(valorFinal);
+    });
+  });
 }
 
 function configurarBotaoCopiarPix() {
