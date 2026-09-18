@@ -78,17 +78,25 @@
         <span>Total a pagar<br><span class="pay-icons">
           <span class="pay-chip">PIX</span>
         </span></span>
-        <strong id="totalValor">R$ 25,00</strong>
+       <strong id="totalValor">R$ --,--</strong>
       </div>
+<!-- Informações Dinâmicas do Lote e Chave Pix -->
+        <div class="pix-key-box" id="containerPix">
+          <div style="margin-bottom: 8px; text-align: center;">
+            <span id="nomeLoteExibicao" style="font-weight: 700; color: var(--verde, #0f281e); font-size: 14px; display: block;">A carregar lote...</span>
+          </div>
 
-      <!-- Chave Pix exibida para o participante pagar antes de anexar o comprovante -->
-      <div class="pix-key-box">
-        <p class="pix-key-label">Pague com a chave Pix (e-mail)</p>
-        <div class="pix-key-row">
-          <p class="pix-key-valor" id="chavePixTexto">pixpenielguaruja@hotmail.com</p>
-          <button type="button" class="btn-copiar-pix" id="btnCopiarPix">Copiar Chave Pix</button>
+          <p class="pix-key-label">Pague com a chave Pix</p>
+          <div class="pix-key-row">
+            <p class="pix-key-valor" id="chavePixTexto">Carregando chave...</p>
+            <button type="button" class="btn-copiar-pix" id="btnCopiarPix">Copiar Chave Pix</button>
+          </div>
         </div>
-      </div>
+
+        <!-- Mensagem de Alerta (Exibida apenas se o lote esgotar ou estiver inativo) -->
+        <div id="mensagemEsgotado" style="display: none; background: #ffebee; color: #c62828; padding: 14px; border-radius: 10px; text-align: center; font-weight: 700; margin: 15px 0; border: 1px solid #ef9a9a;">
+          ⚠️ Inscrições encerradas ou lote esgotado!
+        </div>
 
       <div class="field">
         <label for="campoComprovante">Comprovante do Pix (imagem ou PDF)</label>
