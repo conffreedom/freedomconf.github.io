@@ -386,14 +386,53 @@ document.addEventListener('DOMContentLoaded', function () {
     return true;
   }
 
+    // Converte com segurança um valor vindo do HTML/banco para número.
+  // Aceita tanto "25.00" quanto "25,50" (vírgula decimal) e devolve
+  // NaN para vazio/nulo/texto inválido, para quem chama decidir o
+  // que fazer.
+  function lerValorNumerico(valorBruto) {
+    if (valorBruto === null || valorBruto === undefined) return NaN;
+    const texto = String(valorBruto).trim().replace(',', '.');
+    if (texto === '') return NaN;
+    const numero = Number(texto);
+    return isFinite(numero) ? numero : NaN;
+  }
+
+  // Relê o card marcado como selecionado na hora de montar o resumo,
+  // em vez de confiar apenas no estadoInscricao. Isso cobre o caso em
+  // que os preços do lote chegaram do Supabase depois da seleção
+  // inicial, e garante que #resumoValorTxt e valor_pago usem
+  // exatamente o mesmo número exibido no card.
+  function sincronizarEstadoComCardSelecionado() {
+    const cardSelecionado = document.querySelector('#combos .combo[data-selected="true"]');
+    if (!cardSelecionado) return;
+
+    const tipo = cardSelecionado.getAttribute('data-id');
+    if (tipo) estadoInscricao.tipoIngresso = tipo;
+
+    // Cascata de segurança: preço do card → último valor válido já
+    // guardado no estado → 0. Nunca deixa NaN chegar na tela.
+    let valor = lerValorNumerico(cardSelecionado.getAttribute('data-preco'));
+    if (isNaN(valor)) valor = lerValorNumerico(estadoInscricao.valor);
+    if (isNaN(valor)) valor = 0;
+
+    estadoInscricao.valor = valor;
+  }
+
   if (btnIrPagamento) {
     btnIrPagamento.addEventListener('click', function () {
       if (!validarPasso1()) return;
 
+      // Garante que tipo e valor estão alinhados com o card visível
+      // antes de escrever qualquer coisa no resumo.
+      sincronizarEstadoComCardSelecionado();
+
+      const arquivoComprovante = campoComprovante.files[0];
+
       // Preenche o resumo com os dados já validados.
       resumoNomeTxt.textContent = campoNome.value.trim();
-      resumoComboTxt.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso;
-      resumoComprovanteTxt.textContent = campoComprovante.files[0].name;
+      resumoComboTxt.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso || '—';
+      resumoComprovanteTxt.textContent = arquivoComprovante ? arquivoComprovante.name : 'anexado';
       resumoValorTxt.textContent = formatarMoeda(estadoInscricao.valor);
 
       esconderTodasAsTelas();
