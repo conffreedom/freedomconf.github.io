@@ -598,180 +598,56 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 });
 // ==========================================
-// ESTADO GLOBAL DA INSCRIÇÃO
+// PREENCHER O RESUMO DO PEDIDO (PASSO 2)
 // ==========================================
-let loteAtivoAtual = null;
-let opcaoSelecionada = 'combo'; // Padrão inicial
-
-// ==========================================
-// 1. CARREGAR LOTE ATIVO DO SUPABASE
-// ==========================================
-async function carregarLoteAtivo() {
-  try {
-    const { data: lote, error } = await window.supabaseClient
-      .from('lotes')
-      .select('*')
-      .eq('ativo', true)
-      .single();
-
-    const containerPix = document.getElementById('containerPix');
-    const msgEsgotado = document.getElementById('mensagemEsgotado');
-
-    if (error || !lote) {
-      console.warn('Nenhum lote ativo encontrado:', error);
-      if (containerPix) containerPix.style.display = 'none';
-      if (msgEsgotado) msgEsgotado.style.display = 'block';
-      return;
-    }
-
-    loteAtivoAtual = lote;
-
-    // Preenche o nome do lote (ex: "1º Lote")
-    const elNome = document.getElementById('nomeLoteExibicao');
-    if (elNome) elNome.textContent = lote.nome;
-
-    // Identifica o card selecionado no HTML
-    const cardSelecionado = document.querySelector('.combo.selecionado') || document.querySelector('.combo');
-    const tipoInicial = cardSelecionado ? cardSelecionado.getAttribute('data-tipo') : 'combo';
-
-    atualizarDetalhesIngresso(tipoInicial);
-    configurarSelecaoDeCombos();
-
-  } catch (err) {
-    console.error('Erro ao carregar lote ativo:', err);
-  }
-}
-
-// ==========================================
-// 2. ATUALIZAR PREÇO E PIX DINÂMICOS
-// ==========================================
-function atualizarDetalhesIngresso(tipo) {
+function atualizarResumoPasso2() {
   if (!loteAtivoAtual) return;
 
-  opcaoSelecionada = tipo || 'combo';
-
-  let valor = 0;
-  let chavePix = '';
+  // 1. Determina Valor e Nome do Tipo selecionado
+  let valorFinal = 0;
+  let tipoTexto = 'Combo (Sexta + Sábado)';
 
   if (opcaoSelecionada === 'sexta') {
-    valor = parseFloat(loteAtivoAtual.preco_sexta ?? loteAtivoAtual.preco_combo ?? 0);
-    chavePix = loteAtivoAtual.chave_pix_sexta || loteAtivoAtual.chave_pix_combo;
+    valorFinal = parseFloat(loteAtivoAtual.preco_sexta ?? loteAtivoAtual.preco_combo ?? 0);
+    tipoTexto = 'Sexta-feira';
   } else if (opcaoSelecionada === 'sabado') {
-    valor = parseFloat(loteAtivoAtual.preco_sabado ?? loteAtivoAtual.preco_combo ?? 0);
-    chavePix = loteAtivoAtual.chave_pix_sabado || loteAtivoAtual.chave_pix_combo;
+    valorFinal = parseFloat(loteAtivoAtual.preco_sabado ?? loteAtivoAtual.preco_combo ?? 0);
+    tipoTexto = 'Sábado';
   } else {
-    valor = parseFloat(loteAtivoAtual.preco_combo ?? 0);
-    chavePix = loteAtivoAtual.chave_pix_combo;
+    valorFinal = parseFloat(loteAtivoAtual.preco_combo ?? 0);
+    tipoTexto = 'Combo (Sexta + Sábado)';
   }
 
-  // Atualiza Preço na Tela (Passo 1)
-  const elPreco = document.getElementById('totalValor');
-  if (elPreco) {
-    elPreco.textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+  // 2. Preenche o Nome do Usuário
+  const elNomeInput = document.getElementById('nomeInput') || document.querySelector('input[type="text"]');
+  const elNomeTxt = document.getElementById('resumoNomeTxt');
+  if (elNomeTxt && elNomeInput) {
+    elNomeTxt.textContent = elNomeInput.value || '-';
   }
 
-  // Atualiza Chave Pix
-  const elPix = document.getElementById('chavePixTexto');
-  if (elPix) {
-    elPix.textContent = chavePix || 'Chave indisponível';
+  // 3. Preenche a Opção (Sexta, Sábado ou Combo)
+  const elComboTxt = document.getElementById('resumoComboTxt');
+  if (elComboTxt) {
+    elComboTxt.textContent = tipoTexto;
   }
 
-  // Atualiza a Tela de Confirmação (Passo 2 - Evita o R$ NaN do Resumo)
-  atualizarResumoConfirmacao(valor, opcaoSelecionada);
-}
-
-function atualizarResumoConfirmacao(valor, tipo) {
-  const elTotalResumo = document.getElementById('resumoTotal') || document.querySelector('.total-pago') || document.getElementById('totalPagoPix');
-  if (elTotalResumo) {
-    elTotalResumo.textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
-  }
-
-  const elOpcaoResumo = document.getElementById('resumoOpcao');
-  if (elOpcaoResumo) {
-    const nomes = { sexta: 'Sexta-feira', sabado: 'Sábado', combo: 'Combo (Sexta + Sábado)' };
-    elOpcaoResumo.textContent = nomes[tipo] || tipo;
-  }
-}
-
-// Escuta os cliques nos cards
-function configurarSelecaoDeCombos() {
-  const combos = document.querySelectorAll('.combo');
-
-  combos.forEach(combo => {
-    combo.addEventListener('click', () => {
-      combos.forEach(c => c.classList.remove('selecionado'));
-      combo.classList.add('selecionado');
-
-      const tipo = combo.getAttribute('data-tipo');
-      atualizarDetalhesIngresso(tipo);
-    });
-  });
-}
-
-// Botão Copiar Pix
-function configurarBotaoCopiarPix() {
-  const btnCopiar = document.getElementById('btnCopiarPix');
-
-  if (btnCopiar) {
-    btnCopiar.addEventListener('click', async () => {
-      const elPix = document.getElementById('chavePixTexto');
-      const textoPix = elPix ? elPix.textContent.trim() : '';
-
-      if (!textoPix || textoPix.includes('Carregando') || textoPix === 'Chave indisponível') return;
-
-      try {
-        await navigator.clipboard.writeText(textoPix);
-        const textoOriginal = btnCopiar.textContent;
-        btnCopiar.textContent = '✓ Copiado!';
-        btnCopiar.style.background = '#2e7d32';
-
-        setTimeout(() => {
-          btnCopiar.textContent = textoOriginal;
-          btnCopiar.style.background = '';
-        }, 2000);
-      } catch (err) {
-        console.error('Erro ao copiar chave Pix:', err);
-      }
-    });
+  // 4. Preenche o Valor Total Formatado
+  const elValorTxt = document.getElementById('resumoValorTxt');
+  if (elValorTxt) {
+    elValorTxt.textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorFinal);
   }
 }
 
 // ==========================================
-// 3. ENVIO DA INSCRIÇÃO PARA O SUPABASE
+// PAYLOAD DO ENVIO PARA O SUPABASE
 // ==========================================
-async function salvarInscricao(dadosFormulario) {
-  try {
-    let valorFinal = 0;
-    if (opcaoSelecionada === 'sexta') valorFinal = parseFloat(loteAtivoAtual.preco_sexta);
-    else if (opcaoSelecionada === 'sabado') valorFinal = parseFloat(loteAtivoAtual.preco_sabado);
-    else valorFinal = parseFloat(loteAtivoAtual.preco_combo);
-
-    const payload = {
-      nome: dadosFormulario.nome,
-      email: dadosFormulario.email,
-      telefone: dadosFormulario.telefone,
-      tipo_ingresso: opcaoSelecionada, // Envia 'sexta', 'sabado' ou 'combo' (resolve o erro de null)
-      valor_pago: valorFinal,
-      lote_id: loteAtivoAtual ? loteAtivoAtual.id : null,
-      pin: dadosFormulario.pin,
-      comprovante_url: dadosFormulario.comprovante_url || null
-    };
-
-    const { data, error } = await window.supabaseClient
-      .from('inscricoes')
-      .insert([payload]);
-
-    if (error) throw error;
-
-    return { sucesso: true, data };
-  } catch (err) {
-    console.error('Erro ao salvar inscrição:', err);
-    return { sucesso: false, erro: err.message };
-  }
-}
-
-// Inicialização
-document.addEventListener('DOMContentLoaded', () => {
-  carregarLoteAtivo();
-  configurarBotaoCopiarPix();
-});
+// Na função do botão "Confirmar Inscrição", garanta que o objeto 'payload' use:
+const payload = {
+  nome: document.getElementById('nomeInput').value,
+  email: document.getElementById('emailInput').value,
+  telefone: document.getElementById('telefoneInput').value,
+  tipo_ingresso: opcaoSelecionada, // <-- envia 'sexta', 'sabado' ou 'combo'
+  valor_pago: valorFinal,
+  pin: document.getElementById('campoPin').value,
+  lote_id: loteAtivoAtual ? loteAtivoAtual.id : null
+};
