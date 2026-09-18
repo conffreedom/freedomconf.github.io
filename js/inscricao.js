@@ -203,60 +203,6 @@ document.addEventListener('DOMContentLoaded', function () {
       evento.target.value = evento.target.value.replace(/\D/g, '').slice(0, 4);
     });
   });
-
-  /* ----------------------------------------------------------
-     4) BOTÃO "COPIAR CHAVE PIX"
-     ---------------------------------------------------------- */
-
-  const btnCopiarPix = document.getElementById('btnCopiarPix');
-  const chavePixTexto = document.getElementById('chavePixTexto');
-
-  // Copia o texto para a área de transferência. Tenta primeiro a
-  // Clipboard API moderna; se o navegador não suportar (ou a
-  // permissão for negada), cai para o método antigo via
-  // document.execCommand, que funciona em praticamente qualquer
-  // navegador dentro de um clique do usuário.
-  async function copiarTexto(texto) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      try {
-        await navigator.clipboard.writeText(texto);
-        return true;
-      } catch (erro) {
-        // segue para o método alternativo abaixo
-      }
-    }
-    try {
-      const areaTemp = document.createElement('textarea');
-      areaTemp.value = texto;
-      areaTemp.style.position = 'fixed';
-      areaTemp.style.opacity = '0';
-      document.body.appendChild(areaTemp);
-      areaTemp.focus();
-      areaTemp.select();
-      document.execCommand('copy');
-      document.body.removeChild(areaTemp);
-      return true;
-    } catch (erro) {
-      return false;
-    }
-  }
-
-  if (btnCopiarPix && chavePixTexto) {
-    btnCopiarPix.addEventListener('click', async function () {
-      const chave = chavePixTexto.textContent.trim();
-      const sucesso = await copiarTexto(chave);
-
-      const textoOriginal = 'Copiar Chave Pix';
-      btnCopiarPix.textContent = sucesso ? 'Copiado! ✓' : 'Não foi possível copiar';
-      btnCopiarPix.classList.toggle('copiado', sucesso);
-
-      setTimeout(function () {
-        btnCopiarPix.textContent = textoOriginal;
-        btnCopiarPix.classList.remove('copiado');
-      }, 2000);
-    });
-  }
-
   /* ----------------------------------------------------------
      5) PASSO 1 → PASSO 2: validação dos dados e do comprovante
      ---------------------------------------------------------- */
@@ -650,4 +596,79 @@ document.addEventListener('DOMContentLoaded', function () {
       // Sem scrollIntoView: volta para o Passo 1 sem forçar rolagem.
     });
   }
+});
+// ==========================================
+// LÓGICA DE LOTES DINÂMICOS E CHAVE PIX
+// ==========================================
+
+let loteAtivoAtual = null;
+
+async function carregarLoteAtivo() {
+  try {
+    const { data: lote, error } = await supabase
+      .from('lotes')
+      .select('*')
+      .eq('ativo', true)
+      .single();
+
+    const containerPix = document.getElementById('containerPix');
+    const msgEsgotado = document.getElementById('mensagemEsgotado');
+    const btnIrPagamento = document.getElementById('btnIrPagamento');
+
+    if (error || !lote) {
+      console.warn('Nenhum lote ativo encontrado.');
+      if (containerPix) containerPix.style.display = 'none';
+      if (msgEsgotado) msgEsgotado.style.display = 'block';
+      if (btnIrPagamento) btnIrPagamento.style.display = 'none';
+      return;
+    }
+
+    loteAtivoAtual = lote;
+
+    const elNome = document.getElementById('nomeLoteExibicao');
+    if (elNome) elNome.textContent = lote.nome;
+
+    const precoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lote.preco);
+    const elPreco = document.getElementById('totalValor');
+    if (elPreco) elPreco.textContent = precoFormatado;
+
+    const elPix = document.getElementById('chavePixTexto');
+    if (elPix) elPix.textContent = lote.chave_pix || 'Chave indisponível';
+
+  } catch (err) {
+    console.error('Erro ao carregar lote ativo:', err);
+  }
+}
+
+function configurarBotaoCopiarPix() {
+  const btnCopiar = document.getElementById('btnCopiarPix');
+  
+  if (btnCopiar) {
+    btnCopiar.addEventListener('click', async () => {
+      const elPix = document.getElementById('chavePixTexto');
+      const textoPix = elPix ? elPix.textContent.trim() : '';
+
+      if (!textoPix || textoPix.includes('Carregando') || textoPix === 'Chave indisponível') return;
+
+      try {
+        await navigator.clipboard.writeText(textoPix);
+        
+        const textoOriginal = btnCopiar.textContent;
+        btnCopiar.textContent = '✓ Copiado!';
+        btnCopiar.style.background = '#2e7d32';
+
+        setTimeout(() => {
+          btnCopiar.textContent = textoOriginal;
+          btnCopiar.style.background = '';
+        }, 2000);
+      } catch (err) {
+        console.error('Erro ao copiar chave Pix:', err);
+      }
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  carregarLoteAtivo();
+  configurarBotaoCopiarPix();
 });
