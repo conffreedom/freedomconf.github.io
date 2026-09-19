@@ -2,9 +2,13 @@
    js/inscricao.js
    ------------------------------------------------------------
    Lógica do PORTAL DE INSCRIÇÃO (inscricao.html):
-     1) Seleção de ingresso (Sexta / Sábado / Combo), com preço e
-        chave Pix por tipo de ingresso atualizados dinamicamente a
-        partir do lote ativo (tabela "lotes" do Supabase);
+     1) Seleção de ingresso (Sexta / Sábado / Combo), com preço,
+        chave Pix e NOME do lote ativo atualizados dinamicamente a
+        partir da tabela "lotes" do Supabase — carregados ao abrir
+        a página, revalidados em tempo real no clique de "Continuar"
+        (trava antifraude contra troca de lote no meio do
+        preenchimento) e mantidos em dia via Supabase Realtime,
+        sem precisar recarregar a página;
      2) Máscara de telefone e validação do formulário;
      3) Botão "Copiar Chave Pix";
      4) Checagem de inscrição duplicada (mesmo nome + e-mail);
@@ -22,6 +26,18 @@
      - js/supabase-client.js (expõe window.supabaseClient e
        window.SUPABASE_COMPROVANTES_BUCKET), carregado ANTES
        deste arquivo.
+
+   ATENÇÃO — coluna do nome do lote (assumida): a tabela "lotes" foi
+   consultada assumindo uma coluna chamada "nome" (ex.: "1º Lote",
+   "2º Lote"). Se na sua tabela ela tiver outro nome (numero_lote,
+   titulo etc.), troque só a constante COLUNA_NOME_LOTE logo no
+   início da seção 1.1 — nada mais no arquivo depende disso.
+
+   ATENÇÃO — elemento opcional #nomeLoteAtivo: se existir um
+   elemento com esse id em inscricao.html, seu texto é atualizado
+   automaticamente (ex.: "Pagamento referente ao 2º Lote"). Se não
+   existir, o código simplesmente não faz nada com ele — não é
+   obrigatório para o resto funcionar.
 
    A contagem regressiva, o menu mobile e o scroll reveal da
    Landing Page NÃO estão mais aqui — ver js/main.js. A consulta de
@@ -52,19 +68,35 @@ document.addEventListener('DOMContentLoaded', function () {
   const totalValorEl = document.getElementById('totalValor');
   const chavePixTextoEl = document.getElementById('chavePixTexto');
 
+  // Elemento opcional (ver nota no cabeçalho do arquivo) onde o
+  // nome do lote ativo é exibido, ex.: "Pagamento referente ao 2º
+  // Lote". Se não existir no HTML, fica só como null e o código
+  // que o usa (atualizarNomeLoteNoDOM) simplesmente não faz nada.
+  const nomeLoteAtivoEl = document.getElementById('nomeLoteAtivo');
+
   // Estado da inscrição em andamento. É atualizado conforme o
-  // usuário navega pelos passos do formulário.
+  // usuário navega pelos passos do formulário. "nomeLote" guarda o
+  // nome do lote ativo no momento (ex.: "2º Lote"), usado tanto na
+  // exibição quanto na mensagem da trava antifraude.
   const estadoInscricao = {
     tipoIngresso: 'COMBO',
     valor: 25.0,
+    nomeLote: null,
   };
 
-  // Chave Pix de cada tipo de ingresso, preenchida pelo
-  // carregarLoteAtivo() (seção 1.1) assim que a resposta do Supabase
-  // chega. Começa vazio de propósito: enquanto isso não acontece,
-  // selecionarCombo() simplesmente não mexe no texto da chave Pix,
-  // mantendo o valor estático do HTML até o lote carregar.
+  // Chave Pix de cada tipo de ingresso, preenchida por
+  // aplicarLoteNoEstado() (seção 1.1) assim que a resposta do
+  // Supabase chega. Começa vazio de propósito: enquanto isso não
+  // acontece, selecionarCombo() simplesmente não mexe no texto da
+  // chave Pix, mantendo o valor estático do HTML até o lote
+  // carregar.
   let chavesPixPorCombo = {};
+
+  // Identificador (id) do lote atualmente aplicado na tela. Usado
+  // pela trava antifraude (seção 1.1/5) para detectar se o lote
+  // ativo mudou entre o carregamento da página e o clique em
+  // "Continuar". Começa null (nenhum lote aplicado ainda).
+  let loteAtivoIdAtual = null;
 
   // Formata um número para o padrão monetário brasileiro (R$ 0,00).
   function formatarMoeda(valor) {
@@ -125,9 +157,13 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     1.1) LOTE ATIVO: preços e chaves Pix (uma por tipo) vindos
+     1.1) LOTE ATIVO: preços, chaves Pix e nome do lote vindos
           do Supabase
      ---------------------------------------------------------- */
+
+  // Nome da coluna com o nome/identificação do lote (ex.: "1º
+  // Lote"). Ver nota de atenção no cabeçalho do arquivo.
+  const COLUNA_NOME_LOTE = 'nome';
 
   // Atualiza UM card: o atributo data-preco (fonte de verdade para o
   // JS) e o texto visível dentro de .preco. O <small>/pessoa</small>
@@ -152,36 +188,48 @@ document.addEventListener('DOMContentLoaded', function () {
     COMBO: { seletor: '.combo[data-id="COMBO"]', colunaPreco: 'preco_combo', colunaPix: 'chave_pix_combo' },
   };
 
-  async function carregarLoteAtivo() {
+  // Escreve o nome do lote ativo no elemento opcional #nomeLoteAtivo
+  // (ver nota no cabeçalho do arquivo). Sem esse elemento no HTML,
+  // não faz nada — o restante do fluxo funciona igual.
+  function atualizarNomeLoteNoDOM() {
+    if (!nomeLoteAtivoEl) return;
+    if (!estadoInscricao.nomeLote) return;
+    nomeLoteAtivoEl.textContent = 'Pagamento referente ao ' + estadoInscricao.nomeLote;
+  }
+
+  // Busca SÓ o lote com ativo = true, sem aplicar nada — usada tanto
+  // no carregamento inicial da página quanto na revalidação em
+  // tempo real (trava antifraude) e no listener do Realtime. Manter
+  // a consulta centralizada aqui garante que os três pontos de uso
+  // busquem exatamente os mesmos campos, da mesma forma.
+  async function buscarLoteAtivoNoSupabase() {
     if (!window.supabaseClient) {
-      console.error('[inscricao.js] carregarLoteAtivo: window.supabaseClient não existe ainda — verifique a ordem dos <script> no HTML.');
-      return;
+      return { data: null, error: new Error('window.supabaseClient não existe ainda.') };
     }
 
-    const { data, error } = await window.supabaseClient
+    return window.supabaseClient
       .from('lotes')
-      .select('preco_sexta, preco_sabado, preco_combo, chave_pix_sexta, chave_pix_sabado, chave_pix_combo')
+      .select(
+        'id, ' + COLUNA_NOME_LOTE + ', preco_sexta, preco_sabado, preco_combo, ' +
+        'chave_pix_sexta, chave_pix_sabado, chave_pix_combo'
+      )
       .eq('ativo', true)
       .limit(1)
       .maybeSingle();
+  }
 
-    // Diagnóstico: mostra exatamente o que o Supabase devolveu, para
-    // facilitar identificar RLS bloqueando SELECT, ausência de lote
-    // ativo, ou nome de coluna incorreto sem precisar depurar às
-    // cegas.
-    console.log('[inscricao.js] carregarLoteAtivo -> resposta do Supabase:', { data, error });
+  // Aplica os dados de UM lote (já buscado) no DOM e no estado:
+  // preço + chave Pix de cada card, nome do lote, e re-seleciona o
+  // card atualmente marcado para o #totalValor/chave Pix/estado
+  // refletirem o valor novo imediatamente. Reaproveitada pelo
+  // carregamento inicial, pela trava antifraude (seção 5) e pelo
+  // listener do Realtime (1.2) — assim os três pontos de entrada
+  // atualizam a tela exatamente da mesma forma.
+  function aplicarLoteNoEstado(data) {
+    if (!data) return;
 
-    if (error) {
-      console.error(
-        '[inscricao.js] Erro ao consultar a tabela "lotes" (provável causa: RLS bloqueando SELECT para o papel "anon"). Detalhe:',
-        error.message || error
-      );
-      return;
-    }
-    if (!data) {
-      console.warn('[inscricao.js] Nenhuma linha em "lotes" com ativo = true. Confira no painel do Supabase se existe um lote marcado como ativo.');
-      return;
-    }
+    if (data.id !== undefined) loteAtivoIdAtual = data.id;
+    if (data[COLUNA_NOME_LOTE]) estadoInscricao.nomeLote = data[COLUNA_NOME_LOTE];
 
     Object.keys(MAPA_CARDS_LOTE).forEach(function (idCombo) {
       const { seletor, colunaPreco, colunaPix } = MAPA_CARDS_LOTE[idCombo];
@@ -211,17 +259,90 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
 
+    atualizarNomeLoteNoDOM();
+
     // Re-seleciona o card já marcado: agora que chavesPixPorCombo e
     // os data-preco foram atualizados, isso aplica de uma vez o
-    // preço, o #totalValor e a chave Pix corretos do lote (a seleção
-    // inicial, lá em cima, rodou antes desta consulta terminar).
+    // preço, o #totalValor e a chave Pix corretos do lote.
     const comboSelecionado = document.querySelector('#combos .combo[data-selected="true"]') || comboInicial;
     if (comboSelecionado) {
       selecionarCombo(comboSelecionado);
     }
+
+    // Se a pessoa já estiver olhando o Passo 2 (Resumo) quando o
+    // lote mudar via Realtime, mantém o resumo em sincronia — sem
+    // trocar de tela nem mexer nos campos já preenchidos por ela.
+    if (typeof telaResumo !== 'undefined' && telaResumo && telaResumo.style.display === 'block') {
+      preencherResumoComEstadoAtual();
+    }
+  }
+
+  async function carregarLoteAtivo() {
+    const { data, error } = await buscarLoteAtivoNoSupabase();
+
+    // Diagnóstico: mostra exatamente o que o Supabase devolveu, para
+    // facilitar identificar RLS bloqueando SELECT, ausência de lote
+    // ativo, ou nome de coluna incorreto sem precisar depurar às
+    // cegas.
+    console.log('[inscricao.js] carregarLoteAtivo -> resposta do Supabase:', { data, error });
+
+    if (error) {
+      console.error(
+        '[inscricao.js] Erro ao consultar a tabela "lotes" (provável causa: RLS bloqueando SELECT para o papel "anon"). Detalhe:',
+        error.message || error
+      );
+      return;
+    }
+    if (!data) {
+      console.warn('[inscricao.js] Nenhuma linha em "lotes" com ativo = true. Confira no painel do Supabase se existe um lote marcado como ativo.');
+      return;
+    }
+
+    aplicarLoteNoEstado(data);
   }
 
   carregarLoteAtivo();
+
+  /* ----------------------------------------------------------
+     1.2) REALTIME: mantém preços, chaves Pix e nome do lote em
+          dia automaticamente, sem recarregar a página
+     ---------------------------------------------------------- */
+
+  // Escuta QUALQUER mudança (INSERT, UPDATE ou DELETE) na tabela
+  // "lotes" e, ao ser avisado, reconsulta "qual é o lote ativo
+  // agora" — não confiamos direto no conteúdo do evento
+  // (payload.new/old) porque ele é só a LINHA que mudou: pode ser a
+  // ativação de um lote novo, a desativação do antigo, uma edição
+  // de preço numa linha que nem está ativa, etc. Refazer a mesma
+  // consulta de sempre garante que o que aparece na tela é sempre o
+  // lote realmente ativo, nunca um instantâneo parcial.
+  //
+  // Só mexe nos cards/preços/chave Pix e no nome do lote — nunca nos
+  // campos do formulário (nome, e-mail, telefone, comprovante), então
+  // a digitação da pessoa nunca é interrompida por isso.
+  if (window.supabaseClient && typeof window.supabaseClient.channel === 'function') {
+    window.supabaseClient
+      .channel('lotes-mudancas-inscricao')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'lotes' },
+        function (payload) {
+          console.log('[inscricao.js] Mudança detectada na tabela "lotes" via Realtime:', payload);
+          buscarLoteAtivoNoSupabase().then(function (resultado) {
+            if (resultado.error) {
+              console.error('[inscricao.js] Erro ao reconsultar o lote ativo após mudança via Realtime:', resultado.error);
+              return;
+            }
+            if (resultado.data) {
+              aplicarLoteNoEstado(resultado.data);
+            }
+          });
+        }
+      )
+      .subscribe();
+  } else {
+    console.warn('[inscricao.js] Supabase Realtime indisponível (window.supabaseClient.channel não existe) — preços só atualizam no carregamento da página e no clique em "Continuar".');
+  }
 
   /* ----------------------------------------------------------
      2) ELEMENTOS DOS 3 PASSOS DO FORMULÁRIO
@@ -390,7 +511,8 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     5) PASSO 1 → PASSO 2: validação dos dados e do comprovante
+     5) PASSO 1 → PASSO 2: validação dos dados, trava antifraude
+        do lote e preenchimento do resumo
      ---------------------------------------------------------- */
 
   function validarPasso1() {
@@ -462,21 +584,66 @@ document.addEventListener('DOMContentLoaded', function () {
     estadoInscricao.valor = valor;
   }
 
+  // Preenche os 4 campos do resumo com o estado atual. Extraída como
+  // função própria (em vez de ficar só dentro do clique de
+  // "Continuar") porque também é chamada por aplicarLoteNoEstado
+  // (seção 1.1) quando o lote muda via Realtime enquanto a pessoa já
+  // está olhando o resumo — mantendo os dois pontos sempre em
+  // sincronia com a mesma lógica.
+  function preencherResumoComEstadoAtual() {
+    const arquivoComprovante = campoComprovante.files[0];
+    resumoNomeTxt.textContent = campoNome.value.trim();
+    resumoComboTxt.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso || '—';
+    resumoComprovanteTxt.textContent = arquivoComprovante ? arquivoComprovante.name : 'anexado';
+    resumoValorTxt.textContent = formatarMoeda(estadoInscricao.valor);
+  }
+
   if (btnIrPagamento) {
-    btnIrPagamento.addEventListener('click', function () {
+    btnIrPagamento.addEventListener('click', async function () {
       if (!validarPasso1()) return;
+
+      // TRAVA ANTIFRAUDE: revalida o lote ativo em tempo real bem
+      // no momento da transição para o Passo 2 — cobre o caso raro
+      // de o lote ter mudado ENQUANTO a pessoa preenchia o
+      // formulário (ex.: o 1º lote esgotou e o 2º entrou no ar
+      // nesse meio-tempo). Nenhum dado já digitado (nome, e-mail,
+      // telefone, comprovante) é tocado nesta checagem.
+      const idLoteAntesDoClique = loteAtivoIdAtual;
+
+      try {
+        const { data, error } = await buscarLoteAtivoNoSupabase();
+
+        if (error) {
+          // Falha de rede/consulta: não trava a pessoa por causa
+          // disso — segue com os valores que já estavam na tela.
+          console.error('[inscricao.js] Falha ao revalidar o lote ativo antes do pagamento:', error);
+        } else if (data) {
+          const loteRealmenteMudou =
+            idLoteAntesDoClique !== null && data.id !== undefined && data.id !== idLoteAntesDoClique;
+
+          // Sempre aplica os dados mais recentes (cobre também o
+          // caso de o MESMO lote ter só o preço/chave Pix editados,
+          // sem trocar de id).
+          aplicarLoteNoEstado(data);
+
+          if (loteRealmenteMudou) {
+            mostrarErro(
+              erroInscricao,
+              'O lote anterior encerrou. Os valores foram atualizados para o ' +
+                (estadoInscricao.nomeLote || 'lote atual') +
+                '. Confira o novo valor e clique em Continuar novamente.'
+            );
+            return; // bloqueia a transição para o resumo só desta vez
+          }
+        }
+      } catch (erroInesperado) {
+        console.error('[inscricao.js] Erro inesperado ao revalidar o lote ativo:', erroInesperado);
+      }
 
       // Garante que tipo e valor estão alinhados com o card visível
       // antes de escrever qualquer coisa no resumo.
       sincronizarEstadoComCardSelecionado();
-
-      const arquivoComprovante = campoComprovante.files[0];
-
-      // Preenche o resumo com os dados já validados.
-      resumoNomeTxt.textContent = campoNome.value.trim();
-      resumoComboTxt.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso || '—';
-      resumoComprovanteTxt.textContent = arquivoComprovante ? arquivoComprovante.name : 'anexado';
-      resumoValorTxt.textContent = formatarMoeda(estadoInscricao.valor);
+      preencherResumoComEstadoAtual();
 
       esconderTodasAsTelas();
       telaResumo.style.display = 'block';
