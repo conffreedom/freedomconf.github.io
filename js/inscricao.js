@@ -1115,4 +1115,70 @@ document.addEventListener('DOMContentLoaded', function () {
       // Sem scrollIntoView: volta para o Passo 1 sem forçar rolagem.
     });
   }
+
+  /* ----------------------------------------------------------
+     10) FAQ: MODAL ÚNICO DE DÚVIDAS FREQUENTES
+     ---------------------------------------------------------- */
+
+  // Um único modal (#modalFaq) reaproveitado por todos os cards: ao
+  // clicar em qualquer um, o título/resposta do PRÓPRIO card
+  // (data-pergunta/data-resposta) são injetados nele antes de abrir
+  // — não existe um modal por pergunta.
+  const faqCards = document.querySelectorAll('.faq-card');
+  const modalFaq = document.getElementById('modalFaq');
+  const modalFaqTitulo = document.getElementById('modalFaqTitulo');
+  const modalFaqCorpo = document.getElementById('modalFaqCorpo');
+  const btnFecharModalFaq = document.getElementById('btnFecharModalFaq');
+
+  function abrirModalFaq(pergunta, resposta) {
+    if (!modalFaq) return;
+    if (modalFaqTitulo) modalFaqTitulo.textContent = pergunta || '';
+    if (modalFaqCorpo) modalFaqCorpo.textContent = resposta || '';
+    modalFaq.classList.add('aberto');
+  }
+
+  function fecharModalFaq() {
+    if (!modalFaq) return;
+    modalFaq.classList.remove('aberto');
+  }
+
+  faqCards.forEach(function (card) {
+    card.addEventListener('click', function () {
+      abrirModalFaq(card.getAttribute('data-pergunta'), card.getAttribute('data-resposta'));
+    });
+
+    // Os cards já têm tabindex="0" e role="button" no HTML (para
+    // leitores de tela e navegação por teclado) — então também
+    // precisam abrir com Enter/Espaço, não só com clique do mouse.
+    card.addEventListener('keydown', function (evento) {
+      if (evento.key === 'Enter' || evento.key === ' ') {
+        evento.preventDefault(); // evita rolar a página no Espaço
+        abrirModalFaq(card.getAttribute('data-pergunta'), card.getAttribute('data-resposta'));
+      }
+    });
+  });
+
+  if (btnFecharModalFaq) {
+    btnFecharModalFaq.addEventListener('click', fecharModalFaq);
+  }
+
+  // Fechar ao clicar no backdrop: só quando o clique foi no PRÓPRIO
+  // overlay (o fundo escuro/desfocado), não em algo dentro do
+  // .modal-box — senão qualquer clique dentro do card fecharia o
+  // modal também.
+  if (modalFaq) {
+    modalFaq.addEventListener('click', function (evento) {
+      if (evento.target === modalFaq) fecharModalFaq();
+    });
+  }
+
+  // Fechar com Esc — só age se o modal do FAQ estiver realmente
+  // aberto, para não interferir com a tecla Esc em outras partes da
+  // página (ex.: o modal de lote esgotado, que tem seu próprio botão
+  // de fechar e continua funcionando independente disso).
+  document.addEventListener('keydown', function (evento) {
+    if (evento.key === 'Escape' && modalFaq && modalFaq.classList.contains('aberto')) {
+      fecharModalFaq();
+    }
+  });
 });
