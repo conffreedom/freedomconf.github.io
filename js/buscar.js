@@ -2,25 +2,30 @@
    js/buscar.js
    ------------------------------------------------------------
    Lógica do PORTAL DO PARTICIPANTE / CREDENCIAL (buscar.html):
-     1) Busca híbrida por e-mail OU código da inscrição;
-     2) Modal de seleção de participantes (cards bege, com nome e
-        data da inscrição), quando a busca retorna uma ou mais
-        inscrições associadas;
-     3) Modal de PIN individual — pedido por participante, nunca no
-        formulário inicial de busca. O PIN correto é conferido
-        direto no filtro da consulta ao Supabase (o valor certo
-        nunca é buscado em lote nem trafega para o navegador antes
-        de bater);
-     4) Renderização dos 3 estados (pendente / recusado / aprovado)
+     1) Busca em PASSO ÚNICO por Nome completo + E-mail + PIN de 4
+        dígitos, via a RPC segura buscar_credencial_individual — a
+        tabela "inscricoes" tem RLS bloqueando todo SELECT anônimo
+        direto, então este arquivo nunca consulta a tabela por
+        conta própria; tudo passa pela função no servidor, que
+        valida os três campos de uma vez e só devolve a credencial
+        correspondente;
+     2) Renderização dos 3 estados (pendente / recusado / aprovado)
         e da credencial com QR code estilizado;
-     5) Proteção anti-força-bruta via localStorage: bloqueio
-        temporário após 5 tentativas de PIN incorretas;
-     6) Download da credencial em PNG via html2canvas.
+     3) Proteção anti-força-bruta via localStorage: bloqueio
+        temporário após 5 tentativas incorretas;
+     4) Download da credencial em PNG via html2canvas.
 
-   Ambos os modais (seleção de participante e PIN) são abertos e
-   fechados adicionando/removendo a classe ".aberto" — nenhuma
-   lógica de visibilidade depende de seletores CSS ":has()" nem de
-   estilo inline no overlay.
+   ATENÇÃO — mudança de arquitetura (decisão de segurança): versões
+   anteriores deste arquivo buscavam por e-mail OU código, listavam
+   todos os participantes daquele e-mail (expondo nomes de outras
+   pessoas cadastradas no mesmo e-mail antes de qualquer
+   autenticação) e só depois pediam o PIN individualmente, por
+   pessoa escolhida. Isso foi descartado de propósito: agora a busca
+   já exige nome + e-mail + PIN toda vez, os três batendo ao mesmo
+   tempo, então não existe mais lista de participantes nem modal de
+   seleção — a RPC devolve OU a credencial exata, OU nada.
+   Por isso os antigos #modalSelecaoParticipantes e #modalPin (e
+   toda a lógica que dependia deles) saíram deste arquivo.
 
    Depende de:
      - js/supabase-client.js (expõe window.supabaseClient),
@@ -42,18 +47,14 @@ document.addEventListener('DOMContentLoaded', function () {
     COMBO: 'Sexta + Sábado',
   };
 
-  const campoBusca = document.getElementById('campoBusca');
+  const campoBuscaNome = document.getElementById('campoBuscaNome');
+  const campoBuscaEmail = document.getElementById('campoBuscaEmail');
+  const campoBuscaPin = document.getElementById('campoBuscaPin');
   const btnBuscarCredencial = document.getElementById('btnBuscarCredencial');
   const erroBuscaCredencial = document.getElementById('erroBuscaCredencial');
 
   const bloqueioAviso = document.getElementById('bloqueioAviso');
   const bloqueioAvisoTexto = document.getElementById('bloqueioAvisoTexto');
-
-  const modalSelecaoParticipantes = document.getElementById('modalSelecaoParticipantes');
-  const btnFecharModalSelecao = modalSelecaoParticipantes
-    ? modalSelecaoParticipantes.querySelector('.modal-fechar')
-    : null;
-  const seletorCredenciais = document.getElementById('seletorCredenciais');
 
   const resultadoConsulta = document.getElementById('resultadoConsulta');
   const resultadoPendente = document.getElementById('resultadoPendente');
@@ -74,17 +75,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const credencialQrcodeBox = document.getElementById('credencialQrcodeBox');
   const credencialCodigo = document.getElementById('credencialCodigo');
   const btnBaixarCredencial = document.getElementById('btnBaixarCredencial');
-
-  const modalPin = document.getElementById('modalPin');
-  const modalPinNome = document.getElementById('modalPinNome');
-  const modalPinInput = document.getElementById('modalPinInput');
-  const btnConfirmarPin = document.getElementById('btnConfirmarPin');
-  const btnFecharModalPin = document.getElementById('btnFecharModalPin');
-  const erroModalPin = document.getElementById('erroModalPin');
-
-  // Guarda o participante escolhido no seletor enquanto o modal de
-  // PIN está aberto — é contra o "id" dele que o PIN é conferido.
-  let participanteSelecionado = null;
 
   function mostrarErro(elementoErro, mensagem) {
     if (!elementoErro) return;
@@ -115,29 +105,15 @@ document.addEventListener('DOMContentLoaded', function () {
     return partes[0] + ' ' + partes[partes.length - 1];
   }
 
-  // Formata uma data ISO (como o Supabase devolve em "created_at")
-  // no padrão brasileiro DD/MM/AAAA. Usa os componentes locais do
-  // Date (dia/mês/ano do fuso do navegador), não UTC — para a data
-  // exibida bater com o dia que a pessoa realmente viveu ao se
-  // inscrever, não o de outro fuso horário.
-  function formatarDataBr(dataIso) {
-    if (!dataIso) return '';
-    const data = new Date(dataIso);
-    if (Number.isNaN(data.getTime())) return '';
-    const dia = String(data.getDate()).padStart(2, '0');
-    const mes = String(data.getMonth() + 1).padStart(2, '0');
-    const ano = data.getFullYear();
-    return dia + '/' + mes + '/' + ano;
-  }
-
   /* ----------------------------------------------------------
      1) PROTEÇÃO ANTI-FORÇA-BRUTA (localStorage)
      ---------------------------------------------------------- */
 
-  // Cada tentativa de PIN incorreta soma 1 neste contador; ao
-  // atingir o máximo, grava um horário de desbloqueio no futuro e
-  // zera o contador. Tudo isolado por dispositivo/navegador, já que
-  // localStorage não é compartilhado entre aparelhos.
+  // Cada tentativa incorreta (nome/e-mail/PIN não batendo juntos)
+  // soma 1 neste contador; ao atingir o máximo, grava um horário de
+  // desbloqueio no futuro e zera o contador. Tudo isolado por
+  // dispositivo/navegador, já que localStorage não é compartilhado
+  // entre aparelhos.
   const CHAVE_TENTATIVAS = 'freedomBuscarTentativasErradas';
   const CHAVE_BLOQUEIO_ATE = 'freedomBuscarBloqueadoAte';
   const MAX_TENTATIVAS_ERRADAS = 5;
@@ -168,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return Math.max(1, Math.ceil(restanteMs / 60000));
   }
 
-  function registrarTentativaDePinErrada() {
+  function registrarTentativaErrada() {
     const tentativas = (Number(localStorage.getItem(CHAVE_TENTATIVAS)) || 0) + 1;
     if (tentativas >= MAX_TENTATIVAS_ERRADAS) {
       localStorage.setItem(CHAVE_BLOQUEIO_ATE, String(Date.now() + DURACAO_BLOQUEIO_MS));
@@ -178,16 +154,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Acertar o PIN reseta o contador — só tentativas ERRADAS contam
-  // para o bloqueio.
+  // Acertar a combinação reseta o contador — só tentativas ERRADAS
+  // contam para o bloqueio.
   function resetarTentativas() {
     localStorage.removeItem(CHAVE_TENTATIVAS);
     localStorage.removeItem(CHAVE_BLOQUEIO_ATE);
   }
 
   // Reflete o estado de bloqueio na tela: mostra/esconde o aviso e
-  // desabilita os dois botões que poderiam ser usados para tentar
-  // de novo (busca e confirmação do PIN).
+  // desabilita o botão de busca.
   function atualizarUiBloqueio() {
     const bloqueado = estaBloqueado();
 
@@ -199,7 +174,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (btnBuscarCredencial) btnBuscarCredencial.disabled = bloqueado;
-    if (btnConfirmarPin) btnConfirmarPin.disabled = bloqueado;
 
     return bloqueado;
   }
@@ -210,46 +184,19 @@ document.addEventListener('DOMContentLoaded', function () {
   atualizarUiBloqueio();
 
   /* ----------------------------------------------------------
-     2) MODAL DE SELEÇÃO DE PARTICIPANTES
+     2) MÁSCARA DO CAMPO PIN (4 dígitos numéricos)
      ---------------------------------------------------------- */
 
-  function mostrarModalSelecao() {
-    if (modalSelecaoParticipantes) modalSelecaoParticipantes.classList.add('aberto');
-  }
-
-  function esconderModalSelecao() {
-    if (modalSelecaoParticipantes) modalSelecaoParticipantes.classList.remove('aberto');
-  }
-
-  if (btnFecharModalSelecao) {
-    btnFecharModalSelecao.addEventListener('click', esconderModalSelecao);
-  }
-
-  if (modalSelecaoParticipantes) {
-    // Clicar na área escurecida (fora dos cards bege) também fecha
-    // o modal — só o clique diretamente no overlay conta.
-    modalSelecaoParticipantes.addEventListener('click', function (evento) {
-      if (evento.target === modalSelecaoParticipantes) esconderModalSelecao();
+  if (campoBuscaPin) {
+    campoBuscaPin.addEventListener('input', function (evento) {
+      evento.target.value = evento.target.value.replace(/\D/g, '').slice(0, 4);
     });
   }
 
   /* ----------------------------------------------------------
-     3) BUSCA HÍBRIDA (e-mail OU código da inscrição)
+     3) RESULTADO: estados (pendente/recusado/aprovado/não
+        encontrado) e credencial com QR code
      ---------------------------------------------------------- */
-
-  // Decide se o texto digitado deve ser buscado como e-mail ou como
-  // código de inscrição — a regra é simples: se tem "@", é e-mail;
-  // caso contrário, é código. Ambos são normalizados com
-  // toLowerCase().trim(); a consulta em si usa "ilike" (comparação
-  // sem diferenciar maiúsculas/minúsculas), então não importa se o
-  // código foi digitado em caixa alta, baixa ou misturada.
-  function detectarTipoBusca(valorDigitado) {
-    const valor = valorDigitado.trim().toLowerCase();
-    if (valor.includes('@')) {
-      return { campo: 'email', valor: valor };
-    }
-    return { campo: 'codigo_ingresso', valor: valor };
-  }
 
   function esconderTodosOsResultados() {
     [resultadoPendente, resultadoRecusado, resultadoNaoEncontrado, resultadoAprovado].forEach(function (el) {
@@ -265,183 +212,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (elementoParaMostrar) elementoParaMostrar.style.display = 'block';
     resultadoConsulta.style.display = 'block';
   }
-
-  // Monta um card bege por participante encontrado (nome em
-  // destaque + data da inscrição no rodapé) dentro de
-  // #seletorCredenciais, e abre o modal de seleção. Clicar em um
-  // card abre o modal de PIN daquela pessoa especificamente.
-  function renderizarSeletorParticipantes(participantes) {
-    seletorCredenciais.innerHTML = '';
-
-    participantes.forEach(function (pessoa) {
-      const card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'cartao-participante';
-
-      const nome = document.createElement('span');
-      nome.className = 'cartao-participante-nome';
-      nome.textContent = pessoa.nome_completo;
-
-      const dataInscricao = document.createElement('span');
-      dataInscricao.className = 'cartao-participante-data';
-      const dataFormatada = formatarDataBr(pessoa.created_at);
-      dataInscricao.textContent = dataFormatada ? 'Inscrito em ' + dataFormatada : '';
-
-      card.appendChild(nome);
-      card.appendChild(dataInscricao);
-      card.addEventListener('click', function () {
-        abrirModalPin(pessoa);
-      });
-
-      seletorCredenciais.appendChild(card);
-    });
-
-    seletorCredenciais.style.display = 'flex';
-    mostrarModalSelecao();
-  }
-
-  async function buscarParticipantes() {
-    esconderErro(erroBuscaCredencial);
-    esconderTodosOsResultados();
-    esconderModalSelecao();
-    seletorCredenciais.style.display = 'none';
-    seletorCredenciais.innerHTML = '';
-
-    if (atualizarUiBloqueio()) {
-      // Já bloqueado por tentativas de PIN erradas anteriores — nem
-      // tenta buscar, só reforça o aviso na tela.
-      return;
-    }
-
-    const valorDigitado = campoBusca.value;
-    if (!valorDigitado || !valorDigitado.trim()) {
-      mostrarErro(erroBuscaCredencial, 'Digite seu e-mail ou o código da inscrição.');
-      return;
-    }
-
-    const { campo, valor } = detectarTipoBusca(valorDigitado);
-
-    btnBuscarCredencial.disabled = true;
-    const textoOriginalBotao = btnBuscarCredencial.textContent;
-    btnBuscarCredencial.textContent = 'Buscando...';
-
-    try {
-      // Nesta primeira consulta, só os campos necessários para
-      // montar os cards são pedidos — nome, tipo de ingresso e a
-      // data de criação (para o "Inscrito em DD/MM/AAAA"). O
-      // "pin_seguranca" de ninguém é buscado em lote aqui; ele só
-      // entra na consulta seguinte, já filtrado por um "id"
-      // específico (ver validarPinDoParticipante).
-      const { data, error } = await window.supabaseClient
-        .from('inscricoes')
-        .select('id, nome_completo, tipo_ingresso, created_at')
-        .ilike(campo, valor)
-        .order('nome_completo', { ascending: true });
-
-      if (error) {
-        mostrarErro(erroBuscaCredencial, obterMensagemErro(error, 'Não foi possível concluir a busca. Tente novamente.'));
-        return;
-      }
-
-      if (!data || data.length === 0) {
-        mostrarEstado(resultadoNaoEncontrado);
-        return;
-      }
-
-      renderizarSeletorParticipantes(data);
-    } catch (erro) {
-      console.error('[buscar.js] Erro ao buscar participantes:', erro);
-      mostrarErro(erroBuscaCredencial, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
-    } finally {
-      btnBuscarCredencial.textContent = textoOriginalBotao;
-      btnBuscarCredencial.disabled = estaBloqueado();
-    }
-  }
-
-  if (btnBuscarCredencial) {
-    btnBuscarCredencial.addEventListener('click', buscarParticipantes);
-  }
-
-  if (campoBusca) {
-    campoBusca.addEventListener('keydown', function (evento) {
-      if (evento.key === 'Enter') buscarParticipantes();
-    });
-  }
-
-  /* ----------------------------------------------------------
-     4) MODAL DE PIN (por participante)
-     ---------------------------------------------------------- */
-
-  function abrirModalPin(pessoa) {
-    participanteSelecionado = pessoa;
-    modalPinNome.textContent = obterPrimeiroEUltimoNome(pessoa.nome_completo) || 'participante';
-    modalPinInput.value = '';
-    esconderErro(erroModalPin);
-    esconderModalSelecao();
-    modalPin.classList.add('aberto');
-    modalPinInput.focus();
-  }
-
-  // Fecha o modal de PIN sem reabrir o de seleção — usado nos
-  // caminhos "internos" (PIN validado com sucesso, ou bloqueio por
-  // excesso de tentativas), onde voltar para a lista não faz sentido.
-  function fecharModalPin() {
-    modalPin.classList.remove('aberto');
-    participanteSelecionado = null;
-  }
-
-  // Fecha o modal de PIN E reabre o de seleção — usado quando quem
-  // está fechando é o PRÓPRIO usuário (botão "×", clique fora ou
-  // Esc), já que nesse caso faz sentido deixá-lo escolher outra
-  // pessoa sem precisar buscar de novo.
-  function cancelarModalPin() {
-    fecharModalPin();
-    if (seletorCredenciais && seletorCredenciais.children.length > 0) {
-      mostrarModalSelecao();
-    }
-  }
-
-  if (btnFecharModalPin) {
-    btnFecharModalPin.addEventListener('click', cancelarModalPin);
-  }
-
-  if (modalPin) {
-    // Clicar na área escurecida (fora do card branco) também fecha
-    // o modal — só o clique diretamente no overlay conta.
-    modalPin.addEventListener('click', function (evento) {
-      if (evento.target === modalPin) cancelarModalPin();
-    });
-  }
-
-  // Tecla Esc fecha o modal que estiver aberto no momento — dá
-  // prioridade ao de PIN, já que ele fica por cima do de seleção
-  // quando os dois "existem" ao mesmo tempo.
-  document.addEventListener('keydown', function (evento) {
-    if (evento.key !== 'Escape') return;
-    if (modalPin && modalPin.classList.contains('aberto')) {
-      cancelarModalPin();
-      return;
-    }
-    if (modalSelecaoParticipantes && modalSelecaoParticipantes.classList.contains('aberto')) {
-      esconderModalSelecao();
-    }
-  });
-
-  // O campo do PIN só aceita dígitos e no máximo 4 caracteres.
-  if (modalPinInput) {
-    modalPinInput.setAttribute('maxlength', '4');
-    modalPinInput.setAttribute('inputmode', 'numeric');
-    modalPinInput.addEventListener('input', function (evento) {
-      evento.target.value = evento.target.value.replace(/\D/g, '').slice(0, 4);
-    });
-    modalPinInput.addEventListener('keydown', function (evento) {
-      if (evento.key === 'Enter') validarPinDoParticipante();
-    });
-  }
-
-  /* ----------------------------------------------------------
-     5) VALIDAÇÃO DO PIN + RENDERIZAÇÃO DO RESULTADO
-     ---------------------------------------------------------- */
 
   function gerarQrCodeCredencial(codigo) {
     if (!credencialQrcodeBox || typeof QRCode === 'undefined') return;
@@ -475,78 +245,99 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  async function validarPinDoParticipante() {
-    esconderErro(erroModalPin);
+  /* ----------------------------------------------------------
+     4) BUSCA EM PASSO ÚNICO (nome + e-mail + PIN via RPC)
+     ---------------------------------------------------------- */
+
+  // Único ponto de contato com o backend para localizar a credencial.
+  // Os três campos são sanitizados com .trim() antes de seguir para
+  // a RPC — o PIN também já vem só com dígitos, graças à máscara da
+  // seção 2, mas o .trim() aqui é uma segunda camada de segurança
+  // caso o valor chegue de outra forma (ex.: autocomplete do
+  // navegador colando espaços).
+  async function buscarCredencial() {
+    esconderErro(erroBuscaCredencial);
+    esconderTodosOsResultados();
 
     if (atualizarUiBloqueio()) {
-      fecharModalPin();
+      // Já bloqueado por tentativas erradas anteriores — nem tenta
+      // buscar, só reforça o aviso na tela.
       return;
     }
 
-    if (!participanteSelecionado) {
-      fecharModalPin();
+    const nome = (campoBuscaNome.value || '').trim();
+    const email = (campoBuscaEmail.value || '').trim();
+    const pin = (campoBuscaPin.value || '').trim();
+
+    if (!nome) {
+      mostrarErro(erroBuscaCredencial, 'Digite seu nome completo.');
+      campoBuscaNome.focus();
       return;
     }
-
-    const pin = modalPinInput.value.trim();
+    if (!email) {
+      mostrarErro(erroBuscaCredencial, 'Digite o e-mail usado na inscrição.');
+      campoBuscaEmail.focus();
+      return;
+    }
     if (!/^\d{4}$/.test(pin)) {
-      mostrarErro(erroModalPin, 'Digite um PIN de 4 números.');
+      mostrarErro(erroBuscaCredencial, 'Digite o PIN de 4 números.');
+      campoBuscaPin.focus();
       return;
     }
 
-    btnConfirmarPin.disabled = true;
-    const textoOriginalBotao = btnConfirmarPin.textContent;
-    btnConfirmarPin.textContent = 'Verificando...';
+    btnBuscarCredencial.disabled = true;
+    const textoOriginalBotao = btnBuscarCredencial.textContent;
+    btnBuscarCredencial.textContent = 'Buscando...';
 
     try {
-      // A comparação do PIN acontece DIRETO no filtro da consulta —
-      // o valor correto de "pin_seguranca" nunca é enviado ao
-      // navegador antes de o usuário acertar; só pedimos o registro
-      // completo ("select('*')") quando o par (id, pin_seguranca)
-      // já bateu no próprio servidor.
-      const { data, error } = await window.supabaseClient
-        .from('inscricoes')
-        .select('*')
-        .eq('id', participanteSelecionado.id)
-        .eq('pin_seguranca', pin)
-        .maybeSingle();
+      // A RPC valida nome + e-mail + PIN juntos, no servidor — o
+      // navegador nunca lê a tabela "inscricoes" diretamente, e só
+      // recebe de volta a credencial correspondente (ou nada).
+      const { data, error } = await window.supabaseClient.rpc('buscar_credencial_individual', {
+        p_nome: nome,
+        p_email: email,
+        p_pin: pin,
+      });
 
       if (error) {
-        mostrarErro(erroModalPin, obterMensagemErro(error, 'Não foi possível validar o PIN. Tente novamente.'));
+        mostrarErro(erroBuscaCredencial, obterMensagemErro(error, 'Não foi possível concluir a busca. Tente novamente.'));
         return;
       }
 
-      if (!data) {
-        registrarTentativaDePinErrada();
-        if (atualizarUiBloqueio()) {
-          fecharModalPin();
-        } else {
-          mostrarErro(erroModalPin, 'PIN incorreto. Confira e tente novamente.');
+      if (!Array.isArray(data) || data.length === 0) {
+        registrarTentativaErrada();
+        if (!atualizarUiBloqueio()) {
+          mostrarEstado(resultadoNaoEncontrado);
         }
         return;
       }
 
-      // PIN correto: zera o contador de tentativas erradas, fecha o
-      // modal (sem reabrir a seleção — a busca terminou com
-      // sucesso) e mostra a credencial (ou o status correspondente).
+      // Nome + e-mail + PIN bateram: zera o contador de tentativas
+      // erradas e renderiza a credencial encontrada.
       resetarTentativas();
-      fecharModalPin();
-      renderizarResultado(data);
+      renderizarResultado(data[0]);
     } catch (erro) {
-      console.error('[buscar.js] Erro ao validar PIN:', erro);
-      mostrarErro(erroModalPin, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
+      console.error('[buscar.js] Erro ao buscar credencial:', erro);
+      mostrarErro(erroBuscaCredencial, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
     } finally {
-      btnConfirmarPin.textContent = textoOriginalBotao;
-      btnConfirmarPin.disabled = estaBloqueado();
+      btnBuscarCredencial.textContent = textoOriginalBotao;
+      btnBuscarCredencial.disabled = estaBloqueado();
     }
   }
 
-  if (btnConfirmarPin) {
-    btnConfirmarPin.addEventListener('click', validarPinDoParticipante);
+  if (btnBuscarCredencial) {
+    btnBuscarCredencial.addEventListener('click', buscarCredencial);
   }
 
+  [campoBuscaNome, campoBuscaEmail, campoBuscaPin].forEach(function (campo) {
+    if (!campo) return;
+    campo.addEventListener('keydown', function (evento) {
+      if (evento.key === 'Enter') buscarCredencial();
+    });
+  });
+
   /* ----------------------------------------------------------
-     6) DOWNLOAD DA CREDENCIAL EM PNG (html2canvas)
+     5) DOWNLOAD DA CREDENCIAL EM PNG (html2canvas)
      ---------------------------------------------------------- */
 
   if (btnBaixarCredencial) {
@@ -569,22 +360,21 @@ document.addEventListener('DOMContentLoaded', function () {
           useCORS: true,
         });
 
+        const nomeElemento = document.getElementById('credencialNome')?.textContent || 'participante';
+        const codigoElemento = document.getElementById('credencialCodigo')?.textContent || '';
+
+        // Trata o nome (remove acentos, espaços viram hífens e fica em minúsculo)
+        const nomeFormatado = nomeElemento
+          .trim()
+          .toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]/g, '-')
+          .replace(/-+/g, '-');
+
+        // Nome único do arquivo (ex.: credencial-felipe-santos-fc2026-3wxz9z.png)
+        const sufixoCodigo = codigoElemento ? `-${codigoElemento.toLowerCase()}` : '';
         const link = document.createElement('a');
-        // Pega o nome e o código da tela (ou do objeto do participante)
-      const nomeElemento = document.getElementById('credencialNome')?.textContent || 'participante';
-      const codigoElemento = document.getElementById('credencialCodigo')?.textContent || '';
-
-      // Trata o nome (remove acentos, espaços viram hífens e fica em minúsculo)
-      const nomeFormatado = nomeElemento
-        .trim()
-        .toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]/g, "-")
-        .replace(/-+/g, "-");
-
-      // Define o nome único (ex: credencial-felipe-santos-fc2026-3wxz9z.png)
-      const sufixoCodigo = codigoElemento ? `-${codigoElemento.toLowerCase()}` : '';
-      link.download = `credencial-${nomeFormatado}${sufixoCodigo}.png`;
+        link.download = `credencial-${nomeFormatado}${sufixoCodigo}.png`;
         link.href = canvas.toDataURL('image/png');
         document.body.appendChild(link);
         link.click();
