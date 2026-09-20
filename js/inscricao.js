@@ -1130,16 +1130,49 @@ document.addEventListener('DOMContentLoaded', function () {
   const modalFaqCorpo = document.getElementById('modalFaqCorpo');
   const btnFecharModalFaq = document.getElementById('btnFecharModalFaq');
 
+  // Controla se o modal foi aberto "sob controle" da History API —
+  // ou seja, se nós mesmos empilhamos uma entrada de histórico ao
+  // abrir. Serve para decidir, ao fechar pela UI (X, backdrop, Esc),
+  // se precisamos "desfazer" essa entrada com history.back() — assim
+  // o botão/gesto "Voltar" do celular NUNCA sai de inscricao.html só
+  // porque o modal do FAQ estava aberto; ele só fecha o modal.
+  let modalFaqAbertoPeloHistorico = false;
+
   function abrirModalFaq(pergunta, resposta) {
     if (!modalFaq) return;
     if (modalFaqTitulo) modalFaqTitulo.textContent = pergunta || '';
     if (modalFaqCorpo) modalFaqCorpo.textContent = resposta || '';
+
+    const jaEstavaAberto = modalFaq.classList.contains('aberto');
     modalFaq.classList.add('aberto');
+
+    // Só empilha uma entrada de histórico na abertura de fato — se o
+    // modal já estava aberto (a pessoa clicou em outro card sem
+    // fechar antes), só troca o conteúdo, sem empilhar de novo (isso
+    // evitaria que um só toque em "Voltar" bastasse para fechar).
+    if (!jaEstavaAberto) {
+      history.pushState({ modalFaqAberto: true }, '');
+      modalFaqAbertoPeloHistorico = true;
+    }
   }
 
-  function fecharModalFaq() {
+  // fechadoPeloHistorico=true quando esta função é chamada A PARTIR
+  // do evento "popstate" (ou seja, a pessoa já apertou Voltar e o
+  // navegador já trocou de entrada sozinho) — nesse caso só fechamos
+  // visualmente, sem chamar history.back() de novo (o que faria a
+  // página sair de inscricao.html de verdade).
+  function fecharModalFaq(fechadoPeloHistorico) {
     if (!modalFaq) return;
+    if (!modalFaq.classList.contains('aberto')) return; // já fechado
+
     modalFaq.classList.remove('aberto');
+
+    if (modalFaqAbertoPeloHistorico && !fechadoPeloHistorico) {
+      modalFaqAbertoPeloHistorico = false;
+      history.back(); // "consome" a entrada empilhada em abrirModalFaq
+    } else {
+      modalFaqAbertoPeloHistorico = false;
+    }
   }
 
   faqCards.forEach(function (card) {
@@ -1159,7 +1192,9 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   if (btnFecharModalFaq) {
-    btnFecharModalFaq.addEventListener('click', fecharModalFaq);
+    btnFecharModalFaq.addEventListener('click', function () {
+      fecharModalFaq(false);
+    });
   }
 
   // Fechar ao clicar no backdrop: só quando o clique foi no PRÓPRIO
@@ -1168,7 +1203,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // modal também.
   if (modalFaq) {
     modalFaq.addEventListener('click', function (evento) {
-      if (evento.target === modalFaq) fecharModalFaq();
+      if (evento.target === modalFaq) fecharModalFaq(false);
     });
   }
 
@@ -1178,7 +1213,16 @@ document.addEventListener('DOMContentLoaded', function () {
   // de fechar e continua funcionando independente disso).
   document.addEventListener('keydown', function (evento) {
     if (evento.key === 'Escape' && modalFaq && modalFaq.classList.contains('aberto')) {
-      fecharModalFaq();
+      fecharModalFaq(false);
+    }
+  });
+
+  // Botão/gesto "Voltar" do navegador: se o modal do FAQ estiver
+  // aberto, apenas fecha ele — não deixa a pessoa sair de
+  // inscricao.html sem querer no meio da leitura de uma dúvida.
+  window.addEventListener('popstate', function () {
+    if (modalFaq && modalFaq.classList.contains('aberto')) {
+      fecharModalFaq(true);
     }
   });
 });
