@@ -18,94 +18,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 
 <!-- Estilos centralizados do projeto (mesmo arquivo da Landing Page e do admin) -->
-<link rel="stylesheet" href="css/styles.css?v=7">
+<link rel="stylesheet" href="css/styles.css?v=8">
 
-<!-- ATENÇÃO: bloco temporário. Não tínhamos o css/styles.css atual
-     nesta conversa para editar diretamente, então os dois ajustes
-     pedidos (respiro do card de ingresso + modal de lote esgotado)
-     foram colocados aqui, autocontidos. Assim que puder, mova este
-     bloco para dentro de css/styles.css (ou me envie o arquivo que
-     eu integro certinho) — funciona igual nos dois lugares, só que
-     centralizado fica mais fácil de manter e reaproveitar em outras
-     páginas (ex.: o card de ingresso também existe no index.html). -->
-<style>
-  /* Correção: preço colando na borda inferior do card de ingresso
-     ao selecionar (ex.: "Sexta + Sábado"). Garante respiro e deixa
-     o card crescer para acomodar o conteúdo, em vez de cortá-lo. */
-  .combos .combo {
-    padding-bottom: 22px !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-  .combos .combo .preco {
-    margin-bottom: 0;
-    padding-bottom: 2px;
-  }
-  .combos .combo[data-selected="true"] {
-    padding-bottom: 22px !important;
-  }
-
-  /* Modal: Inscrições Encerradas (nenhum lote ativo) */
-  .modal-lote-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 200;
-    background: rgba(5, 20, 15, .72);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-  }
-  .modal-lote-overlay.aberto {
-    display: flex;
-  }
-  .modal-lote-box {
-    position: relative;
-    background: var(--branco);
-    border-radius: 18px;
-    max-width: 420px;
-    width: 100%;
-    padding: 36px 28px 30px;
-    text-align: center;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, .35);
-  }
-  .modal-lote-box .emoji {
-    font-size: 40px;
-    margin-bottom: 14px;
-  }
-  .modal-lote-box h3 {
-    margin: 0 0 12px;
-    font-family: 'Poppins', sans-serif;
-    font-size: 20px;
-    color: var(--preto);
-  }
-  .modal-lote-box p {
-    margin: 0 0 10px;
-    font-size: 14px;
-    color: #555;
-    line-height: 1.6;
-  }
-  .modal-lote-box .btn {
-    margin-top: 18px;
-    display: inline-block;
-    text-decoration: none;
-  }
-  .modal-lote-fechar {
-    position: absolute;
-    top: 14px;
-    right: 16px;
-    background: none;
-    border: none;
-    font-size: 22px;
-    line-height: 1;
-    color: #999;
-    cursor: pointer;
-    padding: 4px;
-  }
-  .modal-lote-fechar:hover {
-    color: var(--preto);
-  }
-</style>
 </head>
 <body>
 
@@ -133,19 +47,19 @@
           <span class="badge-check"></span>
           <div class="dia">Sexta-feira</div>
           <span class="detalhe">30/10 · a partir das 20h</span>
-          <div class="preco">R$ 20,00<small>/pessoa</small></div>
+          <div class="preco"><span class="preco-cifrao">R$</span><span class="preco-valor">20,00<small>/pessoa</small></span></div>
         </div>
         <div class="combo" data-id="SABADO" data-preco="20.00">
           <span class="badge-check"></span>
           <div class="dia">Sábado</div>
           <span class="detalhe">31/10 · a partir das 14h</span>
-          <div class="preco">R$ 20,00<small>/pessoa</small></div>
+          <div class="preco"><span class="preco-cifrao">R$</span><span class="preco-valor">20,00<small>/pessoa</small></span></div>
         </div>
         <div class="combo" data-id="COMBO" data-preco="25.00" data-selected="true">
           <span class="badge-check"></span>
           <div class="dia">Sexta + Sábado</div>
           <span class="detalhe">Os dois dias do evento</span>
-          <div class="preco">R$ 25,00<small>/pessoa</small></div>
+          <div class="preco"><span class="preco-cifrao">R$</span><span class="preco-valor">25,00<small>/pessoa</small></span></div>
         </div>
       </div>
 
@@ -323,19 +237,26 @@
 </div>
 
 <!-- Modal exibido quando NÃO existe nenhum lote com ativo = true
-     (todas as vagas esgotadas). js/inscricao.js abre/fecha isto
-     alternando a classe "aberto" — ver o bloco .modal-lote-* no
-     css/styles.css. Impede a ida ao Passo 2 enquanto estiver aberto
-     (o botão "Ir para Pagamento" continua clicável, mas o handler
-     mostra este modal em vez de avançar). -->
-<div class="modal-lote-overlay" id="modalLoteEsgotado">
-  <div class="modal-lote-box">
-    <button type="button" class="modal-lote-fechar" id="btnFecharModalLoteEsgotado" aria-label="Fechar">×</button>
-    <div class="emoji" aria-hidden="true">🙏</div>
-    <h3>Inscrições encerradas</h3>
-    <p>Uau, que alegria! Todas as vagas e lotes da Freedom Conf. 2026 já foram preenchidos.</p>
-    <p>Agradecemos demais o seu interesse — fique de olho nas nossas redes sociais para não perder a próxima edição!</p>
-    <a class="btn btn-primary" href="index.html">Entendi / Voltar ao Início</a>
+     (todas as vagas esgotadas). Reaproveita o .modal-overlay/.modal-box
+     genéricos do projeto (mesmo usados pelo FAQ) — "overlay-neutro"
+     só troca o fundo para o padrão escuro/neutro das credenciais.
+     js/inscricao.js abre/fecha isto alternando a classe "aberto"
+     (mesmo mecanismo do .modal-overlay padrão). Impede a ida ao
+     Passo 2 enquanto estiver aberto — o botão "Ir para Pagamento"
+     continua clicável, mas o handler mostra este modal em vez de
+     avançar. -->
+<div class="modal-overlay overlay-neutro" id="modalLoteEsgotado">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Inscrições encerradas</h3>
+      <button type="button" class="modal-fechar" id="btnFecharModalLoteEsgotado" aria-label="Fechar">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:40px; margin-bottom:14px;" aria-hidden="true">🙏</div>
+      <p>Uau, que alegria! Todas as vagas e lotes da Freedom Conf. 2026 já foram preenchidos.</p>
+      <p>Agradecemos demais o seu interesse — fique de olho nas nossas redes sociais para não perder a próxima edição!</p>
+      <a class="btn btn-primary" href="index.html" style="display:inline-block; text-decoration:none; margin-top:12px;">Entendi / Voltar ao Início</a>
+    </div>
   </div>
 </div>
 
