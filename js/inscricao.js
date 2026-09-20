@@ -1,20 +1,23 @@
 /* ============================================================
    js/inscricao.js
    ------------------------------------------------------------
-   Lógica do PORTAL DE INSCRIÇÃO (inscricao.html):
+   Lógica do PORTAL DE INSCRIÇÃO (inscricao.html), em 3 passos
+   isolados (Passo 1: dados pessoais + ingresso; Passo 2: Pix +
+   comprovante; Passo 3: resumo + PIN + confirmação):
      1) Seleção de ingresso (Sexta / Sábado / Combo), com preço,
         chave Pix e NOME do lote ativo atualizados dinamicamente a
         partir da tabela "lotes" do Supabase — carregados ao abrir
-        a página, revalidados em tempo real no clique de "Continuar"
+        a página, revalidados em tempo real na saída do Passo 1
         (trava antifraude contra troca de lote no meio do
         preenchimento) e mantidos em dia via Supabase Realtime,
         sem precisar recarregar a página;
-     2) Máscara de telefone e validação do formulário;
-     3) Botão "Copiar Chave Pix";
+     2) Máscara de telefone (Passo 1) e do PIN (Passo 3);
+     3) Botão "Copiar Chave Pix" (Passo 2);
      4) Checagem de inscrição duplicada (mesmo nome + e-mail);
-     5) PIN de segurança de 4 dígitos: máscara, dupla validação no
-        Passo 2 (precisa bater com a confirmação) e envio junto com
-        a inscrição, mapeado para a coluna "pin_seguranca";
+     5) Validação de cada passo isoladamente: dados pessoais
+        (Passo 1), comprovante (Passo 2) e PIN com dupla
+        confirmação (Passo 3) — e a navegação entre os 3 passos e
+        os 2 botões "← Voltar";
      6) Upload do comprovante de Pix para o Supabase Storage;
      7) Geração do código único do ingresso e INSERT na tabela
         "inscricoes" do Supabase (incluindo o PIN e o tipo de
@@ -32,12 +35,6 @@
    "2º Lote"). Se na sua tabela ela tiver outro nome (numero_lote,
    titulo etc.), troque só a constante COLUNA_NOME_LOTE logo no
    início da seção 1.1 — nada mais no arquivo depende disso.
-
-   ATENÇÃO — elemento opcional #nomeLoteAtivo: se existir um
-   elemento com esse id em inscricao.html, seu texto é atualizado
-   automaticamente (ex.: "Pagamento referente ao 2º Lote"). Se não
-   existir, o código simplesmente não faz nada com ele — não é
-   obrigatório para o resto funcionar.
 
    A contagem regressiva, o menu mobile e o scroll reveal da
    Landing Page NÃO estão mais aqui — ver js/main.js. A consulta de
@@ -349,6 +346,7 @@ document.addEventListener('DOMContentLoaded', function () {
      ---------------------------------------------------------- */
 
   const telaForm = document.getElementById('formInscricao');
+  const telaPagamentoPix = document.getElementById('pagamentoPix');
   const telaResumo = document.getElementById('resumoPedido');
   const telaSucesso = document.getElementById('telaSucesso');
 
@@ -357,8 +355,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const campoTelefone = document.getElementById('campoTelefone');
   const campoComprovante = document.getElementById('campoComprovante');
 
-  // Campos do PIN de segurança de 4 dígitos, preenchidos no Passo 2
-  // (tela de resumo) junto com a confirmação da inscrição.
+  // Campos do PIN de segurança de 4 dígitos, preenchidos no Passo 3
+  // (confirmação) junto com a confirmação da inscrição.
   const campoPin = document.getElementById('campoPin');
   const campoPinConfirma = document.getElementById('campoPinConfirma');
 
@@ -367,6 +365,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const erroResumo = document.getElementById('erroResumo');
 
   const btnIrPagamento = document.getElementById('btnIrPagamento');
+  const btnVoltarPagamento = document.getElementById('btnVoltarPagamento');
+  const btnIrConfirmacao = document.getElementById('btnIrConfirmacao');
   const btnVoltarResumo = document.getElementById('btnVoltarResumo');
   const btnConfirmarInscricao = document.getElementById('btnConfirmarInscricao');
   const btnNovaInscricao = document.getElementById('btnNovaInscricao');
@@ -387,6 +387,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function esconderTodasAsTelas() {
     if (telaForm) telaForm.style.display = 'none';
+    if (telaPagamentoPix) telaPagamentoPix.style.display = 'none';
     if (telaResumo) telaResumo.style.display = 'none';
     if (telaSucesso) telaSucesso.style.display = 'none';
   }
@@ -515,14 +516,15 @@ document.addEventListener('DOMContentLoaded', function () {
         do lote e preenchimento do resumo
      ---------------------------------------------------------- */
 
+  // Valida SÓ os dados pessoais (Passo 1). A validação do
+  // comprovante saiu daqui — agora é responsabilidade exclusiva de
+  // validarComprovante(), chamada no Passo 2.
   function validarPasso1() {
     esconderErro(erroInscricao);
-    esconderErro(erroComprovante);
 
     const nome = campoNome.value.trim();
     const email = campoEmail.value.trim();
     const telefone = campoTelefone.value.trim();
-    const arquivo = campoComprovante.files[0];
 
     if (nome.length < 3 || nome.indexOf(' ') === -1) {
       mostrarErro(erroInscricao, 'Informe seu nome completo.');
@@ -543,6 +545,17 @@ document.addEventListener('DOMContentLoaded', function () {
       campoTelefone.focus();
       return false;
     }
+
+    return true;
+  }
+
+  // Valida SÓ o comprovante (Passo 2) — mesmas regras de antes
+  // (obrigatório, tipo aceito, até 5 MB), só que isoladas do
+  // restante do formulário.
+  function validarComprovante() {
+    esconderErro(erroComprovante);
+
+    const arquivo = campoComprovante.files[0];
 
     if (!arquivo) {
       mostrarErro(erroComprovante, 'Anexe o comprovante do Pix para continuar.');
@@ -603,11 +616,11 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!validarPasso1()) return;
 
       // TRAVA ANTIFRAUDE: revalida o lote ativo em tempo real bem
-      // no momento da transição para o Passo 2 — cobre o caso raro
-      // de o lote ter mudado ENQUANTO a pessoa preenchia o
-      // formulário (ex.: o 1º lote esgotou e o 2º entrou no ar
-      // nesse meio-tempo). Nenhum dado já digitado (nome, e-mail,
-      // telefone, comprovante) é tocado nesta checagem.
+      // no momento da saída do Passo 1 — cobre o caso raro de o
+      // lote ter mudado ENQUANTO a pessoa preenchia o formulário
+      // (ex.: o 1º lote esgotou e o 2º entrou no ar nesse
+      // meio-tempo). Nenhum dado já digitado (nome, e-mail,
+      // telefone) é tocado nesta checagem.
       const idLoteAntesDoClique = loteAtivoIdAtual;
 
       try {
@@ -633,16 +646,37 @@ document.addEventListener('DOMContentLoaded', function () {
                 (estadoInscricao.nomeLote || 'lote atual') +
                 '. Confira o novo valor e clique em Continuar novamente.'
             );
-            return; // bloqueia a transição para o resumo só desta vez
+            return; // bloqueia a ida ao Passo 2 só desta vez
           }
         }
       } catch (erroInesperado) {
         console.error('[inscricao.js] Erro inesperado ao revalidar o lote ativo:', erroInesperado);
       }
 
-      // Garante que tipo e valor estão alinhados com o card visível
-      // antes de escrever qualquer coisa no resumo.
+      // Lote confirmado (ou sem mudança): garante que tipo e valor
+      // estão alinhados com o card visível antes de seguir para a
+      // tela de pagamento.
       sincronizarEstadoComCardSelecionado();
+
+      esconderTodasAsTelas();
+      telaPagamentoPix.style.display = 'block';
+      // Sem scrollIntoView: a troca de passo só alterna qual card
+      // está visível, mantendo a posição de rolagem do usuário.
+    });
+  }
+
+  if (btnVoltarPagamento) {
+    btnVoltarPagamento.addEventListener('click', function () {
+      esconderErro(erroInscricao);
+      esconderTodasAsTelas();
+      telaForm.style.display = 'block';
+    });
+  }
+
+  if (btnIrConfirmacao) {
+    btnIrConfirmacao.addEventListener('click', function () {
+      if (!validarComprovante()) return;
+
       preencherResumoComEstadoAtual();
 
       esconderTodasAsTelas();
@@ -656,7 +690,7 @@ document.addEventListener('DOMContentLoaded', function () {
     btnVoltarResumo.addEventListener('click', function () {
       esconderErro(erroResumo);
       esconderTodasAsTelas();
-      telaForm.style.display = 'block';
+      telaPagamentoPix.style.display = 'block';
     });
   }
 
