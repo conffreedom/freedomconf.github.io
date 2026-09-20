@@ -186,6 +186,15 @@ document.addEventListener('DOMContentLoaded', function () {
   // Atualiza UM card: o atributo data-preco (fonte de verdade para o
   // JS) e o texto visível dentro de .preco. O <small>/pessoa</small>
   // é reconstruído junto para não se perder ao trocar o conteúdo.
+  // Formata só o número, sem o "R$" (ex.: "20,00", "1.234,56") — usado
+  // para montar o preço em 2 linhas dentro do card (ver .preco-cifrao/
+  // .preco-valor no styles.css). formatarMoeda() continua igual e
+  // intacta para os outros usos (#totalValor, resumo), que mostram
+  // "R$ 20,00" numa linha só.
+  function formatarNumeroBRL(valor) {
+    return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   function aplicarPrecoNoCard(comboEl, preco) {
     const valor = lerValorNumerico(preco);
     if (isNaN(valor)) return false;
@@ -193,7 +202,13 @@ document.addEventListener('DOMContentLoaded', function () {
     comboEl.setAttribute('data-preco', valor.toFixed(2));
     const precoEl = comboEl.querySelector('.preco');
     if (precoEl) {
-      precoEl.innerHTML = formatarMoeda(valor) + '<small>/pessoa</small>';
+      // Mesma estrutura em 2 linhas do HTML estático: "R$" na
+      // primeira, o valor + "/pessoa" na segunda — senão, assim que
+      // o lote carrega do Supabase, o preço volta pro formato antigo
+      // de uma linha só e "vaza" da largura do card de novo.
+      precoEl.innerHTML =
+        '<span class="preco-cifrao">R$</span>' +
+        '<span class="preco-valor">' + formatarNumeroBRL(valor) + '<small>/pessoa</small></span>';
     }
     return true;
   }
