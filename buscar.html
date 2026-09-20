@@ -42,13 +42,23 @@
       <text font-size="30"><textPath href="#arcBuscar" startOffset="50%" text-anchor="middle">FREEDOM CONF</textPath></text>
     </svg>
     <h1 class="heading">Minha credencial</h1>
-    <p class="sub">Digite o e-mail usado na inscrição ou o código recebido (ex: FC2026-XXXXXX). Depois, selecione seu nome na lista e informe o PIN de 4 dígitos para ver sua credencial.</p>
+    <p class="sub">Digite seu nome completo, o e-mail usado na inscrição e o PIN de 4 dígitos para ver sua credencial.</p>
 
-    <!-- Formulário de busca: e-mail OU código da inscrição (busca híbrida) -->
+    <!-- Formulário de busca: nome completo + e-mail + PIN, os 3
+         juntos — a RPC buscar_credencial_individual exige os três
+         campos numa única chamada, sem etapa intermediária. -->
     <div class="form-card" id="formBusca">
       <div class="field">
-        <label for="campoBusca">E-mail ou Código da Inscrição</label>
-        <input id="campoBusca" placeholder="voce@email.com ou FC2026-XXXXXX" autocomplete="off" />
+        <label for="campoBuscaNome">Nome completo</label>
+        <input id="campoBuscaNome" placeholder="Seu nome completo" autocomplete="name" />
+      </div>
+      <div class="field">
+        <label for="campoBuscaEmail">E-mail</label>
+        <input id="campoBuscaEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="campoBuscaPin">PIN de segurança (4 dígitos)</label>
+        <input id="campoBuscaPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
       </div>
 
       <button type="button" class="btn btn-primary" id="btnBuscarCredencial" style="width:100%; text-align:center;">Consultar Credencial</button>
@@ -56,63 +66,13 @@
       <!-- Mensagens de erro (nada encontrado, falha na busca etc.) -->
       <p id="erroBuscaCredencial" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
 
-      <!-- Aviso de bloqueio temporário por excesso de tentativas de
-           PIN incorretas — estrutura visual pronta; js/buscar.js
+      <!-- Aviso de bloqueio temporário por excesso de tentativas
+           incorretas — estrutura visual pronta; js/buscar.js
            controla quando aparece, com base no contador salvo em
            localStorage. -->
       <div class="bloqueio-aviso" id="bloqueioAviso" style="display:none;">
         <strong>Muitas tentativas incorretas.</strong>
         <span id="bloqueioAvisoTexto"> Tente novamente em alguns minutos.</span>
-      </div>
-    </div>
-
-    <!-- Modal de seleção de participante(s): fundo verde-escuro
-         oficial, com um card bege em formato de pílula por
-         inscrito encontrado. A visibilidade deste modal acompanha
-         automaticamente o #seletorCredenciais logo abaixo (que o
-         js/buscar.js já controla via style.display/innerHTML, sem
-         nenhuma mudança necessária no script) — ver a regra
-         "#modalSelecaoParticipantes:has(#seletorCredenciais...)"
-         em css/styles.css. O fechar (clique no "×" ou fora do
-         card) usa um pequeno onclick inline, então também não
-         depende de nenhum listener novo no buscar.js. -->
-    <div class="modal-overlay modal-selecao-overlay" id="modalSelecaoParticipantes"
-         onclick="if(event.target===this){var s=document.getElementById('seletorCredenciais'); if(s) s.style.display='none';}">
-      <div class="modal-box modal-selecao-box">
-        <div class="modal-header">
-          <h3>Selecione o participante</h3>
-          <button type="button" class="modal-fechar" aria-label="Fechar"
-                  onclick="var s=document.getElementById('seletorCredenciais'); if(s) s.style.display='none';">×</button>
-        </div>
-        <div class="modal-body">
-          <!-- Preenchido dinamicamente por js/buscar.js: um botão
-               ".btn-line" por participante encontrado (mesmo código
-               de sempre). O CSS reestiliza esses botões, dentro
-               deste container, como os cards bege em pílula do
-               novo design — ver css/styles.css. -->
-          <div id="seletorCredenciais" style="display:none; flex-direction:column; gap:10px;"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal de PIN: pedido individualmente, POR PARTICIPANTE,
-         depois de escolhido no seletor acima — nunca no formulário
-         inicial de busca. -->
-    <div class="modal-overlay" id="modalPin">
-      <div class="modal-box">
-        <div class="modal-header">
-          <h3>PIN de <span id="modalPinNome"></span></h3>
-          <button type="button" class="modal-fechar" id="btnFecharModalPin" aria-label="Fechar">×</button>
-        </div>
-        <div class="modal-body">
-          <p style="margin:0 0 14px; font-size:13.5px; color:#555;">Digite o PIN de 4 dígitos criado na inscrição desta pessoa.</p>
-          <div class="field">
-            <label for="modalPinInput">PIN de segurança</label>
-            <input id="modalPinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
-          </div>
-          <button type="button" class="btn btn-primary" id="btnConfirmarPin" style="width:100%; text-align:center;">Ver credencial</button>
-          <p id="erroModalPin" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
-        </div>
       </div>
     </div>
 
@@ -190,6 +150,6 @@
 <!-- 1) conexão com o Supabase; 2) lógica da consulta/credencial -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js?v=2.0.0"></script>
-<script src="js/buscar.js?v=3.1.0"></script>
+<script src="js/buscar.js?v=4.0.0"></script>
 </body>
 </html>
