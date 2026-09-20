@@ -207,8 +207,17 @@ footer a:hover{ color:var(--branco); }
 .combo[data-selected="true"] .badge-check{ background:var(--verde); border-color:var(--verde); }
 .combo .dia{ font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; margin-bottom:4px;}
 .combo .detalhe{ font-size:12px; color:#666; display:block; margin-bottom:16px; min-height:32px;}
-.combo .preco{ font-family:'Bevan',serif; font-size:26px; color:var(--verde); }
-.combo .preco small{ font-family:'Inter',sans-serif; font-size:12px; color:#888; font-weight:400;}
+/* Preço em bloco vertical: "R$" em destaque numa linha, o valor
+   numérico + "/pessoa" na linha de baixo. Antes disso era tudo numa
+   linha só ("R$ 25,00/pessoa") na fonte Bevan de 26px, larga o
+   bastante para estourar a largura do card — daí o vazamento. */
+.combo .preco{
+  font-family:'Bevan',serif; color:var(--verde);
+  display:flex; flex-direction:column; line-height:1.2;
+}
+.combo .preco-cifrao{ font-size:13px; letter-spacing:1.5px; margin-bottom:2px; }
+.combo .preco-valor{ font-size:26px; }
+.combo .preco-valor small{ font-family:'Inter',sans-serif; font-size:12px; color:#888; font-weight:400; margin-left:3px;}
 .form-card{ background:var(--branco); border-radius:16px; padding:32px; text-align:left; }
 .field{ margin-bottom:18px; }
 .field label{ display:block; font-size:13px; color:#555; margin-bottom:7px; font-weight:600; font-family:'Poppins',sans-serif;}
@@ -346,6 +355,18 @@ footer a:hover{ color:var(--branco); }
 .modal-selecao-box .modal-fechar{ color:var(--bege); }
 .modal-selecao-box .modal-fechar:hover{ color:var(--branco); }
 .modal-selecao-box .modal-body p{ color:#C9D6CE; }
+
+/* ---- Overlay escuro e neutro (sem a tonalidade esverdeada do
+   .modal-overlay padrão) — mesmo padrão usado na tela de
+   credencial. Usado pelo modal de lote esgotado (inscricao.html);
+   sobrescreve só o fundo, herdando o resto (posição, blur, transição
+   de opacidade via .aberto) do .modal-overlay genérico acima. ---- */
+.modal-overlay.overlay-neutro{
+  background:rgba(0, 0, 0, 0.65);
+  -webkit-backdrop-filter:blur(6px);
+  backdrop-filter:blur(6px);
+}
+#modalLoteEsgotado .modal-body{ text-align:center; }
 
 /* ---- Cards dos participantes: retângulos bege com cantos bem
    arredondados (estilo pílula suave). Nome em destaque, alinhado ao
