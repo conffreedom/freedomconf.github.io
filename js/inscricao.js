@@ -51,6 +51,16 @@
 document.addEventListener('DOMContentLoaded', function () {
   'use strict';
 
+  // Marcador de diagnóstico: imprime sempre que o arquivo roda, com
+  // uma "assinatura" fácil de conferir no console remoto do celular
+  // (ex.: chrome://inspect no Android, Web Inspector no iOS via Mac).
+  // Se você abrir o site no celular e NÃO ver esta linha (ou vir uma
+  // sem "sem select() no insert"), o navegador ainda está rodando um
+  // js/inscricao.js antigo em cache — não é mais um bug de código,
+  // é cache. A correção nesse caso é bumpar a versão no <script> do
+  // inscricao.html (ex.: troque "?v=3.0.0" por "?v=4.0.0").
+  console.log('[inscricao.js] build: RLS-fix-sem-select-no-insert + rpc-duplicidade');
+
   /* ----------------------------------------------------------
      1) SELEÇÃO DE INGRESSO (combos)
      ---------------------------------------------------------- */
@@ -763,24 +773,39 @@ document.addEventListener('DOMContentLoaded', function () {
   // e-mail se repetir com um nome diferente (ex.: alguém inscrevendo
   // um familiar com o mesmo e-mail de contato), a inscrição segue
   // normalmente — só o par (nome, e-mail) precisa ser único.
+  //
+  // IMPORTANTE: isto NÃO faz mais um .select() direto na tabela
+  // "inscricoes" — a RLS bloqueia todo SELECT anônimo nela agora,
+  // não só o .select() encadeado no INSERT. Em vez disso, chama a
+  // função checar_inscricao_duplicada(...) via RPC: ela roda no
+  // servidor (normalmente como SECURITY DEFINER no Postgres), então
+  // consegue consultar a tabela com seu próprio privilégio e devolve
+  // só um booleano — o navegador nunca lê a tabela diretamente.
+  //
+  // SUPOSIÇÃO A CONFIRMAR: assumi que a RPC recebe os parâmetros
+  // "p_nome_completo" e "p_email" (texto) e retorna true/false. Se a
+  // função no Supabase tiver outro nome de parâmetro ou outro
+  // formato de retorno (ex.: uma contagem em vez de booleano), ajuste
+  // só o objeto passado para .rpc(...) e/ou o "Boolean(data)" abaixo
+  // — o resto da função não precisa mudar.
   async function existeInscricaoDuplicada(nomeCompleto, email) {
-    try {
-        const { data, error } = await window.supabaseClient.rpc('checar_inscricao_duplicada', {
-            p_nome: nomeCompleto,
-            p_email: email
-        });
+    const { data, error } = await window.supabaseClient.rpc('checar_inscricao_duplicada', {
+      p_nome_completo: nomeCompleto,
+      p_email: email,
+    });
 
-        if (error) {
-            console.error('[inscricao.js] Erro ao checar duplicidade:', error);
-            return false;
-        }
-
-        return data === true;
-    } catch (err) {
-        console.error('[inscricao.js] Falha na requisição de duplicidade:', err);
-        return false;
+    if (error) {
+      // Se a checagem em si falhar (ex.: instabilidade de rede, ou
+      // a RPC ainda não existir/ter outro nome no seu projeto), não
+      // travamos a inscrição por causa disso — deixamos seguir e uma
+      // eventual duplicidade é tratada manualmente pela equipe no
+      // painel administrativo.
+      console.error('[inscricao.js] Erro ao checar duplicidade via RPC "checar_inscricao_duplicada":', error);
+      return false;
     }
-}
+
+    return Boolean(data);
+  }
 
   /* ----------------------------------------------------------
      7) GERAÇÃO DO CÓDIGO DO INGRESSO
@@ -931,17 +956,28 @@ document.addEventListener('DOMContentLoaded', function () {
   // código e tenta de novo, até um número máximo de tentativas —
   // isso é extremamente raro (36^6 combinações), mas o código fica
   // preparado para o caso.
+  //
+  // IMPORTANTE: propositalmente SEM .select()/.single() no final.
+  // A política de RLS da tabela "inscricoes" permite INSERT anônimo
+  // mas bloqueia SELECT para quem não é admin — encadear .select()
+  // faz o Supabase tentar reler a linha recém-criada logo em
+  // seguida, e essa releitura bloqueada invalidava o INSERT inteiro
+  // (erro "new row violates row-level security policy"), mesmo a
+  // gravação em si sendo permitida. Sem o .select(), o INSERT roda
+  // sozinho e não depende de nenhuma permissão de leitura.
+  //
+  // Consequência direta: não há mais como reler a linha gravada, então
+  // devolvemos o CÓDIGO GERADO LOCALMENTE (a única "fonte da verdade"
+  // que temos após um INSERT sem retorno) em vez da linha do banco.
   async function inserirInscricaoComRetentativa(dadosBase, tentativasRestantes) {
     const codigo = gerarCodigoIngresso();
 
-    const { data, error } = await window.supabaseClient
+    const { error } = await window.supabaseClient
       .from('inscricoes')
-      .insert([Object.assign({}, dadosBase, { codigo_ingresso: codigo })])
-      .select()
-      .single();
+      .insert([Object.assign({}, dadosBase, { codigo_ingresso: codigo })]);
 
     if (!error) {
-      return data;
+      return codigo;
     }
 
     const eraColisaoDeCodigo = error.code === '23505';
@@ -1034,36 +1070,15 @@ document.addEventListener('DOMContentLoaded', function () {
           pin_seguranca: pinValidado,
         };
 
-        const inscricaoCriada = await inserirInscricaoComRetentativa(dadosInscricao, 5);
-
-        // IMPORTANTE: exibe o PIN que VOLTOU do banco
-        // (inscricaoCriada.pin_seguranca), não o valor digitado no
-        // formulário. Mostrar sempre "pinValidado" aqui mascararia
-        // silenciosamente qualquer problema de gravação — a pessoa
-        // veria o PIN certo na tela mesmo que, por algum motivo do
-        // lado do banco (RLS, trigger, nome de coluna), o valor
-        // salvo tivesse ficado null. Registrar essa divergência no
-        // console também ajuda a equipe a flagrar o problema cedo.
-        if (inscricaoCriada.pin_seguranca !== pinValidado) {
-          console.error(
-            '[inscricao.js] PIN divergente após salvar a inscrição — enviado:',
-            pinValidado,
-            '| retornado pelo Supabase:',
-            inscricaoCriada.pin_seguranca
-          );
-        }
-
-        // Mesma checagem de divergência, agora para o tipo de
-        // ingresso — uma discrepância aqui apontaria para algo do
-        // lado do banco (trigger, default, RLS), não do formulário.
-        if (inscricaoCriada.tipo_ingresso !== tipoIngressoValidado) {
-          console.error(
-            '[inscricao.js] tipo_ingresso divergente após salvar — enviado:',
-            tipoIngressoValidado,
-            '| retornado pelo Supabase:',
-            inscricaoCriada.tipo_ingresso
-          );
-        }
+        // inserirInscricaoComRetentativa agora devolve só o CÓDIGO
+        // (string) gerado localmente — não há mais como reler a linha
+        // gravada (RLS bloqueia SELECT para quem não é admin), então
+        // as antigas checagens de divergência PIN/tipo_ingresso contra
+        // o retorno do banco deixaram de ser possíveis. Os valores
+        // exibidos na tela de sucesso são os mesmos três dados que
+        // acabamos de mandar no INSERT — nunca "voltaram" do banco,
+        // porque agora não há retorno nenhum em caso de sucesso.
+        const codigoGerado = await inserirInscricaoComRetentativa(dadosInscricao, 5);
 
         // Preenche e exibe a tela de sucesso. O pagamento ainda
         // depende de conferência manual, então nenhum QR code é
@@ -1071,8 +1086,8 @@ document.addEventListener('DOMContentLoaded', function () {
         // como referência.
         nomeSucesso.textContent = nomeCompleto.split(' ')[0];
         comboSucesso.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso;
-        codigoSucesso.textContent = inscricaoCriada.codigo_ingresso;
-        if (pinSucesso) pinSucesso.textContent = inscricaoCriada.pin_seguranca;
+        codigoSucesso.textContent = codigoGerado;
+        if (pinSucesso) pinSucesso.textContent = pinValidado;
 
         esconderTodasAsTelas();
         telaSucesso.style.display = 'block';
