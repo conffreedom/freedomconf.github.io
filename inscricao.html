@@ -28,39 +28,40 @@
   <a class="btn-voltar-limpo" href="index.html">← Voltar</a>
 </div>
 
-<!-- ===================== INSCRIÇÃO (3 passos) ===================== -->
+<!-- ===================== INSCRIÇÃO (3 passos isolados) ===================== -->
 <section id="inscricao">
   <div class="insc-wrap">
     <svg class="arco" width="300" height="72" viewBox="0 0 300 72" overflow="visible">
       <path id="arcInsc" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
       <text font-size="30"><textPath href="#arcInsc" startOffset="50%" text-anchor="middle">FREEDOM CONF</textPath></text>
     </svg>
-    <h1 class="heading">Escolha sua opção</h1>
-    <p class="sub">Selecione o ingresso, pague via Pix e envie o comprovante.</p>
 
-    <div class="combos" id="combos">
-      <div class="combo" data-id="SEXTA" data-preco="20.00">
-        <span class="badge-check"></span>
-        <div class="dia">Sexta-feira</div>
-        <span class="detalhe">30/10 · a partir das 20h</span>
-        <div class="preco">R$ 20,00<small>/pessoa</small></div>
-      </div>
-      <div class="combo" data-id="SABADO" data-preco="20.00">
-        <span class="badge-check"></span>
-        <div class="dia">Sábado</div>
-        <span class="detalhe">31/10 · a partir das 14h</span>
-        <div class="preco">R$ 20,00<small>/pessoa</small></div>
-      </div>
-      <div class="combo" data-id="COMBO" data-preco="25.00" data-selected="true">
-        <span class="badge-check"></span>
-        <div class="dia">Sexta + Sábado</div>
-        <span class="detalhe">Os dois dias do evento</span>
-        <div class="preco">R$ 25,00<small>/pessoa</small></div>
-      </div>
-    </div>
-
-    <!-- Passo 1: dados da inscrição, chave Pix para pagamento e upload do comprovante -->
+    <!-- ============ PASSO 1 — Dados pessoais & seleção de ingresso ============ -->
     <div class="form-card" id="formInscricao">
+      <h1 class="heading">Passo 1 de 3 — Seus dados</h1>
+      <p class="sub">Escolha o ingresso e informe seus dados. O pagamento via Pix é no próximo passo.</p>
+
+      <div class="combos" id="combos">
+        <div class="combo" data-id="SEXTA" data-preco="20.00">
+          <span class="badge-check"></span>
+          <div class="dia">Sexta-feira</div>
+          <span class="detalhe">30/10 · a partir das 20h</span>
+          <div class="preco">R$ 20,00<small>/pessoa</small></div>
+        </div>
+        <div class="combo" data-id="SABADO" data-preco="20.00">
+          <span class="badge-check"></span>
+          <div class="dia">Sábado</div>
+          <span class="detalhe">31/10 · a partir das 14h</span>
+          <div class="preco">R$ 20,00<small>/pessoa</small></div>
+        </div>
+        <div class="combo" data-id="COMBO" data-preco="25.00" data-selected="true">
+          <span class="badge-check"></span>
+          <div class="dia">Sexta + Sábado</div>
+          <span class="detalhe">Os dois dias do evento</span>
+          <div class="preco">R$ 25,00<small>/pessoa</small></div>
+        </div>
+      </div>
+
       <div class="field">
         <label for="campoNome">Nome completo</label>
         <input id="campoNome" placeholder="Seu nome" autocomplete="name" />
@@ -73,6 +74,24 @@
         <label for="campoTelefone">Telefone</label>
         <input id="campoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="numeric" maxlength="15" />
       </div>
+
+      <!-- Alerta do lote: usado tanto para erros de validação dos
+           campos acima quanto para o aviso da trava antifraude
+           ("o lote mudou enquanto você preenchia"), disparado no
+           clique de "Ir para Pagamento". -->
+      <a class="btn btn-primary" id="btnIrPagamento">Ir para Pagamento</a>
+      <p id="erroInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+    </div>
+
+    <!-- ============ PASSO 2 — Pagamento Pix (novo passo isolado) ============ -->
+    <div class="form-card" id="pagamentoPix" style="display:none;">
+      <button type="button" class="resumo-voltar" id="btnVoltarPagamento">← Voltar</button>
+      <h2 class="heading" style="margin-top:0;">Passo 2 de 3 — Pagamento via Pix</h2>
+      <p class="sub">Pague o valor abaixo com a chave Pix e anexe o comprovante.</p>
+
+      <p style="font-size:13.5px; color:#555; margin:0 0 4px;">
+        Pagamento referente ao <span id="nomeLoteAtivo">1º Lote</span>
+      </p>
 
       <div class="total-row">
         <span>Total a pagar<br><span class="pay-icons">
@@ -96,14 +115,13 @@
         <span class="erro-campo" id="erroComprovante" style="display:none;"></span>
       </div>
 
-      <a class="btn btn-primary" id="btnIrPagamento">Continuar</a>
-      <p id="erroInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+      <a class="btn btn-primary" id="btnIrConfirmacao">Avançar para Confirmação</a>
     </div>
 
-    <!-- Passo 2: resumo do pedido antes do envio final -->
+    <!-- ============ PASSO 3 — Confirmação final & PIN ============ -->
     <div class="form-card resumo-pedido" id="resumoPedido" style="display:none;">
       <button type="button" class="resumo-voltar" id="btnVoltarResumo">← Voltar</button>
-      <h2>Confirme sua inscrição</h2>
+      <h2>Passo 3 de 3 — Confirme sua inscrição</h2>
       <div class="resumo-linhas">
         <div class="resumo-linha"><span>Nome</span><b id="resumoNomeTxt"></b></div>
         <div class="resumo-linha"><span>Opção</span><b id="resumoComboTxt"></b></div>
@@ -111,9 +129,8 @@
         <div class="resumo-linha destaque"><span>Total pago via Pix</span><b id="resumoValorTxt"></b></div>
       </div>
 
-      <!-- Criação do PIN de segurança: feita aqui, no Passo 2, logo
-           antes da confirmação final — é o último dado que falta
-           antes de gravar a inscrição. -->
+      <!-- Criação do PIN de segurança: último dado antes de gravar
+           a inscrição de fato. -->
       <div style="border-top:1px solid var(--cinza); padding-top:18px; margin-bottom:22px;">
         <p style="margin:0 0 14px; font-size:13.5px; color:#555; line-height:1.6;">
           Crie um PIN de 4 dígitos para consultar sua credencial posteriormente.
@@ -128,11 +145,12 @@
         </div>
       </div>
 
-      <button type="button" class="btn-pix" id="btnConfirmarInscricao">💠 Confirmar inscrição</button>
+      <button type="button" class="btn-pix" id="btnConfirmarInscricao">💠 Finalizar Inscrição</button>
       <p id="erroResumo" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
     </div>
 
-    <!-- Passo 3: sucesso — pagamento ainda pendente de conferência manual -->
+    <!-- Passo 4 (fora da contagem "3 passos" pedida): sucesso —
+         pagamento ainda pendente de conferência manual -->
     <div class="form-card" id="telaSucesso" style="display:none; text-align:center;">
       <div style="font-size:36px; margin-bottom:10px;">⏳</div>
       <h2 class="heading" style="margin:0 0 10px;">Inscrição enviada!</h2>
