@@ -71,6 +71,27 @@ document.addEventListener('DOMContentLoaded', function () {
   // que o usa (atualizarNomeLoteNoDOM) simplesmente não faz nada.
   const nomeLoteAtivoEl = document.getElementById('nomeLoteAtivo');
 
+  // Modal exibido quando NÃO existe nenhum lote com ativo = true
+  // (todas as vagas esgotadas). Usado em 3 pontos: carregamento
+  // inicial da página, revalidação no clique de "Ir para Pagamento"
+  // e o listener do Realtime (seções 1.1/1.2/5).
+  const modalLoteEsgotado = document.getElementById('modalLoteEsgotado');
+  const btnFecharModalLoteEsgotado = document.getElementById('btnFecharModalLoteEsgotado');
+
+  function mostrarModalLoteEsgotado() {
+    if (!modalLoteEsgotado) return;
+    modalLoteEsgotado.classList.add('aberto');
+  }
+
+  function esconderModalLoteEsgotado() {
+    if (!modalLoteEsgotado) return;
+    modalLoteEsgotado.classList.remove('aberto');
+  }
+
+  if (btnFecharModalLoteEsgotado) {
+    btnFecharModalLoteEsgotado.addEventListener('click', esconderModalLoteEsgotado);
+  }
+
   // Estado da inscrição em andamento. É atualizado conforme o
   // usuário navega pelos passos do formulário. "nomeLote" guarda o
   // nome do lote ativo no momento (ex.: "2º Lote"), usado tanto na
@@ -191,7 +212,11 @@ document.addEventListener('DOMContentLoaded', function () {
   function atualizarNomeLoteNoDOM() {
     if (!nomeLoteAtivoEl) return;
     if (!estadoInscricao.nomeLote) return;
-    nomeLoteAtivoEl.textContent = 'Pagamento referente ao ' + estadoInscricao.nomeLote;
+    // Só o nome (ex.: "3º Lote") — o prefixo "Pagamento referente
+    // ao " já é texto fixo no HTML, antes do <span>. Escrever o
+    // prefixo aqui de novo é o que causava o "Pagamento referente
+    // ao Pagamento referente ao 3º Lote".
+    nomeLoteAtivoEl.textContent = estadoInscricao.nomeLote;
   }
 
   // Busca SÓ o lote com ativo = true, sem aplicar nada — usada tanto
@@ -291,10 +316,12 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     if (!data) {
-      console.warn('[inscricao.js] Nenhuma linha em "lotes" com ativo = true. Confira no painel do Supabase se existe um lote marcado como ativo.');
+      console.warn('[inscricao.js] Nenhuma linha em "lotes" com ativo = true — exibindo o modal de inscrições encerradas.');
+      mostrarModalLoteEsgotado();
       return;
     }
 
+    esconderModalLoteEsgotado(); // por garantia, caso um lote tenha voltado a ficar ativo
     aplicarLoteNoEstado(data);
   }
 
@@ -331,7 +358,16 @@ document.addEventListener('DOMContentLoaded', function () {
               return;
             }
             if (resultado.data) {
+              esconderModalLoteEsgotado();
               aplicarLoteNoEstado(resultado.data);
+            } else {
+              // O último lote acabou de ser desativado, em tempo
+              // real. Não interrompe quem já concluiu a inscrição
+              // (tela de sucesso) — só quem ainda está navegando.
+              const jaConcluiu = telaSucesso && telaSucesso.style.display === 'block';
+              if (!jaConcluiu) {
+                mostrarModalLoteEsgotado();
+              }
             }
           });
         }
@@ -630,13 +666,22 @@ document.addEventListener('DOMContentLoaded', function () {
           // Falha de rede/consulta: não trava a pessoa por causa
           // disso — segue com os valores que já estavam na tela.
           console.error('[inscricao.js] Falha ao revalidar o lote ativo antes do pagamento:', error);
-        } else if (data) {
+        } else if (!data) {
+          // Não existe mais NENHUM lote ativo — provavelmente
+          // esgotou enquanto a pessoa preenchia o Passo 1. Bloqueia
+          // a ida ao Passo 2 e mostra o modal dedicado, em vez do
+          // texto de erro comum (esse caso é bem mais definitivo do
+          // que só "o lote trocou").
+          mostrarModalLoteEsgotado();
+          return;
+        } else {
           const loteRealmenteMudou =
             idLoteAntesDoClique !== null && data.id !== undefined && data.id !== idLoteAntesDoClique;
 
           // Sempre aplica os dados mais recentes (cobre também o
           // caso de o MESMO lote ter só o preço/chave Pix editados,
           // sem trocar de id).
+          esconderModalLoteEsgotado();
           aplicarLoteNoEstado(data);
 
           if (loteRealmenteMudou) {
