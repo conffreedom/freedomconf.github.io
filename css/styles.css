@@ -224,6 +224,38 @@ footer a:hover{ color:var(--branco); }
 .field input{ width:100%; padding:14px 16px; background:var(--cinza); border:1.5px solid transparent; border-radius:9px; color:var(--preto); font-size:15px; font-family:'Inter',sans-serif;}
 .field input:focus{ outline:none; border-color:var(--verde); background:var(--branco); }
 .field .erro-campo{ display:block; color:#A13B2C; font-size:12px; margin-top:6px; }
+
+/* ---- Aviso customizado de inscrição duplicada (Passo 1) ----
+   Substitui o alert() nativo do navegador por um banner no próprio
+   layout, com a identidade visual do projeto — borda de destaque em
+   --verde, texto em --verde-dark, fundo --branco. Fica escondido por
+   padrão (display:none inline no HTML) e é mostrado/escondido via
+   .style.display pelo js/inscricao.js. */
+.aviso-duplicidade{
+  display:flex; align-items:flex-start; gap:12px;
+  background:var(--branco);
+  border:1.5px solid var(--bege);
+  border-left:4px solid var(--verde);
+  border-radius:12px;
+  padding:14px 16px;
+  margin-top:14px;
+  text-align:left;
+}
+.aviso-duplicidade-icone{ font-size:20px; line-height:1; margin-top:1px; flex-shrink:0; }
+.aviso-duplicidade-texto{ flex:1; min-width:0; }
+.aviso-duplicidade-texto strong{
+  display:block; font-family:'Poppins',sans-serif; font-weight:700;
+  font-size:13.5px; color:var(--verde-dark); margin-bottom:4px;
+}
+.aviso-duplicidade-texto p{
+  margin:0; font-size:13px; color:var(--preto); line-height:1.5; opacity:.82;
+}
+.aviso-duplicidade-fechar{
+  background:none; border:none; font-size:18px; line-height:1;
+  color:var(--bege); cursor:pointer; padding:2px 4px; margin-left:2px;
+  flex-shrink:0; transition:color .15s ease;
+}
+.aviso-duplicidade-fechar:hover{ color:var(--verde-dark); }
 .field input[type="file"]{
   padding:12px 14px; cursor:pointer; font-size:13px; color:#555;
 }
