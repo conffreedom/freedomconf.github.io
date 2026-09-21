@@ -676,6 +676,37 @@ document.addEventListener('DOMContentLoaded', function () {
     btnIrPagamento.addEventListener('click', async function () {
       if (!validarPasso1()) return;
 
+      // Garante que o tipo de ingresso usado na checagem de
+      // duplicidade logo abaixo é exatamente o do card selecionado
+      // agora (o usuário pode ter trocado de combo antes de clicar).
+      sincronizarEstadoComCardSelecionado();
+
+      const emailParaChecagem = campoEmail.value.trim();
+      const tipoIngressoParaChecagem = estadoInscricao.tipoIngresso;
+
+      btnIrPagamento.disabled = true;
+      const textoOriginalBotaoPagamento = btnIrPagamento.textContent;
+      btnIrPagamento.textContent = 'Verificando...';
+
+      try {
+        const duplicada = await existeInscricaoDuplicada(emailParaChecagem, tipoIngressoParaChecagem);
+        if (duplicada) {
+          alert(
+            'Este e-mail já possui uma inscrição para esta opção de ingresso (ou possui um ingresso COMBO). ' +
+              'Não é possível repetir a compra do mesmo tipo.'
+          );
+          return; // fica no Passo 1 — o botão é reabilitado no finally abaixo
+        }
+      } catch (erroInesperado) {
+        // Mesma postura de "fail-open" já usada no resto do arquivo:
+        // um erro na CHECAGEM em si não deve travar quem está
+        // tentando se inscrever de boa-fé.
+        console.error('[inscricao.js] Erro inesperado ao checar duplicidade:', erroInesperado);
+      } finally {
+        btnIrPagamento.disabled = false;
+        btnIrPagamento.textContent = textoOriginalBotaoPagamento;
+      }
+
       // TRAVA ANTIFRAUDE: revalida o lote ativo em tempo real bem
       // no momento da saída do Passo 1 — cobre o caso raro de o
       // lote ter mudado ENQUANTO a pessoa preenchia o formulário
@@ -768,35 +799,27 @@ document.addEventListener('DOMContentLoaded', function () {
      6) CHECAGEM DE INSCRIÇÃO DUPLICADA
      ---------------------------------------------------------- */
 
-  // Considera duplicidade apenas quando NOME COMPLETO e E-MAIL são
-  // ambos exatamente iguais a uma inscrição já existente. Se o
-  // e-mail se repetir com um nome diferente (ex.: alguém inscrevendo
-  // um familiar com o mesmo e-mail de contato), a inscrição segue
-  // normalmente — só o par (nome, e-mail) precisa ser único.
+  // Considera duplicidade quando este E-MAIL já tem uma inscrição
+  // para o MESMO tipo de ingresso — ou já tem um ingresso COMBO
+  // (que cobre os dois dias, tornando qualquer outra compra
+  // redundante). Essa regra mora inteira na função SQL da RPC; aqui
+  // só repassamos e-mail + tipo de ingresso e lemos o booleano de
+  // volta.
   //
-  // IMPORTANTE: isto NÃO faz mais um .select() direto na tabela
-  // "inscricoes" — a RLS bloqueia todo SELECT anônimo nela agora,
-  // não só o .select() encadeado no INSERT. Em vez disso, chama a
-  // função checar_inscricao_duplicada(...) via RPC: ela roda no
-  // servidor (normalmente como SECURITY DEFINER no Postgres), então
-  // consegue consultar a tabela com seu próprio privilégio e devolve
-  // só um booleano — o navegador nunca lê a tabela diretamente.
-  //
-  // SUPOSIÇÃO A CONFIRMAR: assumi que a RPC recebe os parâmetros
-  // "p_nome_completo" e "p_email" (texto) e retorna true/false. Se a
-  // função no Supabase tiver outro nome de parâmetro ou outro
-  // formato de retorno (ex.: uma contagem em vez de booleano), ajuste
-  // só o objeto passado para .rpc(...) e/ou o "Boolean(data)" abaixo
-  // — o resto da função não precisa mudar.
-  async function existeInscricaoDuplicada(nomeCompleto, email) {
+  // IMPORTANTE: isto não faz nenhum .select() direto na tabela
+  // "inscricoes" — a RLS bloqueia todo SELECT anônimo nela. A RPC
+  // roda no servidor (normalmente como SECURITY DEFINER no
+  // Postgres), então consegue consultar a tabela com seu próprio
+  // privilégio e devolve só um booleano — o navegador nunca lê a
+  // tabela diretamente.
+  async function existeInscricaoDuplicada(email, tipoIngresso) {
     const { data, error } = await window.supabaseClient.rpc('checar_inscricao_duplicada', {
-      p_nome_completo: nomeCompleto,
       p_email: email,
+      p_tipo_ingresso: tipoIngresso,
     });
 
     if (error) {
-      // Se a checagem em si falhar (ex.: instabilidade de rede, ou
-      // a RPC ainda não existir/ter outro nome no seu projeto), não
+      // Se a checagem em si falhar (ex.: instabilidade de rede), não
       // travamos a inscrição por causa disso — deixamos seguir e uma
       // eventual duplicidade é tratada manualmente pela equipe no
       // painel administrativo.
@@ -1046,15 +1069,10 @@ document.addEventListener('DOMContentLoaded', function () {
       const email = campoEmail.value.trim();
 
       try {
-        // Checa duplicidade ANTES de subir o arquivo e gravar
-        // qualquer coisa no banco — evita upload desnecessário.
-        btnConfirmarInscricao.textContent = 'Verificando...';
-        const duplicada = await existeInscricaoDuplicada(nomeCompleto, email);
-        if (duplicada) {
-          mostrarErro(erroResumo, 'Já existe uma inscrição realizada com este Nome e E-mail.');
-          return;
-        }
-
+        // A checagem de duplicidade agora acontece antes, no clique
+        // de "Ir para Pagamento" (Passo 1 → 2) — ver seção 5. Aqui
+        // já se sabe que passou por ela; só falta subir o
+        // comprovante e gravar.
         btnConfirmarInscricao.textContent = 'Enviando...';
         const urlComprovante = await enviarComprovante(arquivo);
 
