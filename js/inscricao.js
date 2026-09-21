@@ -713,6 +713,7 @@ document.addEventListener('DOMContentLoaded', function () {
       // agora (o usuário pode ter trocado de combo antes de clicar).
       sincronizarEstadoComCardSelecionado();
 
+      const nomeParaChecagem = campoNome.value.trim();
       const emailParaChecagem = campoEmail.value.trim();
       const tipoIngressoParaChecagem = estadoInscricao.tipoIngresso;
 
@@ -721,11 +722,11 @@ document.addEventListener('DOMContentLoaded', function () {
       btnIrPagamento.textContent = 'Verificando...';
 
       try {
-        const duplicada = await existeInscricaoDuplicada(emailParaChecagem, tipoIngressoParaChecagem);
+        const duplicada = await existeInscricaoDuplicada(nomeParaChecagem, emailParaChecagem, tipoIngressoParaChecagem);
         if (duplicada) {
           mostrarAvisoDuplicidade(
-            'Este e-mail já possui uma inscrição para esta opção de ingresso (ou possui um ingresso COMBO). ' +
-              'Não é possível repetir a compra do mesmo tipo.'
+            'Já existe uma inscrição ativa deste tipo (ou um ingresso COMBO) para o participante ' +
+              nomeParaChecagem + ' com este e-mail.'
           );
           return; // fica no Passo 1 — o botão é reabilitado no finally abaixo
         }
@@ -831,12 +832,11 @@ document.addEventListener('DOMContentLoaded', function () {
      6) CHECAGEM DE INSCRIÇÃO DUPLICADA
      ---------------------------------------------------------- */
 
-  // Considera duplicidade quando este E-MAIL já tem uma inscrição
-  // para o MESMO tipo de ingresso — ou já tem um ingresso COMBO
-  // (que cobre os dois dias, tornando qualquer outra compra
+  // Considera duplicidade quando este NOME + E-MAIL já têm uma
+  // inscrição para o MESMO tipo de ingresso — ou já têm um ingresso
+  // COMBO (que cobre os dois dias, tornando qualquer outra compra
   // redundante). Essa regra mora inteira na função SQL da RPC; aqui
-  // só repassamos e-mail + tipo de ingresso e lemos o booleano de
-  // volta.
+  // só repassamos os três campos e lemos o booleano de volta.
   //
   // IMPORTANTE: isto não faz nenhum .select() direto na tabela
   // "inscricoes" — a RLS bloqueia todo SELECT anônimo nela. A RPC
@@ -844,8 +844,9 @@ document.addEventListener('DOMContentLoaded', function () {
   // Postgres), então consegue consultar a tabela com seu próprio
   // privilégio e devolve só um booleano — o navegador nunca lê a
   // tabela diretamente.
-  async function existeInscricaoDuplicada(email, tipoIngresso) {
+  async function existeInscricaoDuplicada(nome, email, tipoIngresso) {
     const { data, error } = await window.supabaseClient.rpc('checar_inscricao_duplicada', {
+      p_nome: nome,
       p_email: email,
       p_tipo_ingresso: tipoIngresso,
     });
