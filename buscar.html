@@ -76,6 +76,22 @@
       </div>
     </div>
 
+    <!-- Modal de seleção de INGRESSO: aparece quando a mesma pessoa
+         tem mais de uma inscrição (ex.: comprou Sexta e Sábado
+         separados). Abre/fecha via classe "aberto" — controlado
+         pelo js/buscar.js. -->
+    <div class="modal-overlay modal-selecao-overlay" id="modalSelecaoIngressos">
+      <div class="modal-box modal-selecao-box">
+        <div class="modal-header">
+          <h3>Selecione o ingresso</h3>
+          <button type="button" class="modal-fechar" id="btnFecharModalSelecaoIngressos" aria-label="Fechar">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="seletorIngressos" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Container onde js/buscar.js renderiza o resultado da busca -->
     <div id="resultadoConsulta" style="display:none; margin-top:24px;">
 
