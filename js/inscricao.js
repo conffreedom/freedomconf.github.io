@@ -120,6 +120,29 @@ document.addEventListener('DOMContentLoaded', function () {
   // carregar.
   let chavesPixPorCombo = {};
 
+  // Aviso customizado de inscrição duplicada (Passo 1) — substitui
+  // o alert() nativo do navegador. Precisa ser declarado ANTES da
+  // primeira chamada de selecionarCombo() logo abaixo, porque ela
+  // já chama esconderAvisoDuplicidade() internamente.
+  const avisoDuplicidade = document.getElementById('avisoDuplicidade');
+  const avisoDuplicidadeTexto = document.getElementById('avisoDuplicidadeTexto');
+  const btnFecharAvisoDuplicidade = document.getElementById('btnFecharAvisoDuplicidade');
+
+  function mostrarAvisoDuplicidade(mensagem) {
+    if (!avisoDuplicidade) return;
+    if (avisoDuplicidadeTexto) avisoDuplicidadeTexto.textContent = mensagem;
+    avisoDuplicidade.style.display = 'flex';
+  }
+
+  function esconderAvisoDuplicidade() {
+    if (!avisoDuplicidade) return;
+    avisoDuplicidade.style.display = 'none';
+  }
+
+  if (btnFecharAvisoDuplicidade) {
+    btnFecharAvisoDuplicidade.addEventListener('click', esconderAvisoDuplicidade);
+  }
+
   // Identificador (id) do lote atualmente aplicado na tela. Usado
   // pela trava antifraude (seção 1.1/5) para detectar se o lote
   // ativo mudou entre o carregamento da página e o clique em
@@ -160,6 +183,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (totalValorEl) {
       totalValorEl.textContent = formatarMoeda(estadoInscricao.valor);
     }
+
+    // Trocar de ingresso pode resolver o conflito que gerou o aviso
+    // de duplicidade (ele é específico por tipo) — some sozinho.
+    esconderAvisoDuplicidade();
 
     // Troca a chave Pix exibida conforme o ingresso escolhido — cada
     // tipo tem sua própria chave (chave_pix_sexta/sabado/combo). Só
@@ -676,6 +703,11 @@ document.addEventListener('DOMContentLoaded', function () {
     btnIrPagamento.addEventListener('click', async function () {
       if (!validarPasso1()) return;
 
+      // Limpa um aviso de duplicidade de uma tentativa anterior,
+      // antes de checar de novo — evita mostrar informação obsoleta
+      // enquanto a nova checagem ainda está rodando.
+      esconderAvisoDuplicidade();
+
       // Garante que o tipo de ingresso usado na checagem de
       // duplicidade logo abaixo é exatamente o do card selecionado
       // agora (o usuário pode ter trocado de combo antes de clicar).
@@ -691,7 +723,7 @@ document.addEventListener('DOMContentLoaded', function () {
       try {
         const duplicada = await existeInscricaoDuplicada(emailParaChecagem, tipoIngressoParaChecagem);
         if (duplicada) {
-          alert(
+          mostrarAvisoDuplicidade(
             'Este e-mail já possui uma inscrição para esta opção de ingresso (ou possui um ingresso COMBO). ' +
               'Não é possível repetir a compra do mesmo tipo.'
           );
