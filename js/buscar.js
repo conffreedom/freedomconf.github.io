@@ -76,6 +76,15 @@ document.addEventListener('DOMContentLoaded', function () {
   const credencialCodigo = document.getElementById('credencialCodigo');
   const btnBaixarCredencial = document.getElementById('btnBaixarCredencial');
 
+  // Modal de seleção de INGRESSO (não de participante — nome+e-mail+
+  // PIN já identificam uma pessoa só; isto é para quando essa mesma
+  // pessoa tem mais de uma inscrição, ex.: comprou Sexta e depois
+  // Sábado separadamente). Ver nota no final da resposta sobre o
+  // HTML que este modal precisa ter em buscar.html.
+  const modalSelecaoIngressos = document.getElementById('modalSelecaoIngressos');
+  const btnFecharModalSelecaoIngressos = document.getElementById('btnFecharModalSelecaoIngressos');
+  const seletorIngressos = document.getElementById('seletorIngressos');
+
   function mostrarErro(elementoErro, mensagem) {
     if (!elementoErro) return;
     elementoErro.textContent = mensagem;
@@ -103,6 +112,21 @@ document.addEventListener('DOMContentLoaded', function () {
     const partes = (nomeCompleto || '').trim().split(/\s+/).filter(Boolean);
     if (partes.length <= 1) return partes[0] || '';
     return partes[0] + ' ' + partes[partes.length - 1];
+  }
+
+  // Formata uma data ISO (como o Supabase devolve em "created_at")
+  // no padrão brasileiro DD/MM/AAAA. Usa os componentes locais do
+  // Date (dia/mês/ano do fuso do navegador), não UTC — para a data
+  // exibida bater com o dia que a pessoa realmente viveu ao se
+  // inscrever, não o de outro fuso horário.
+  function formatarDataBr(dataIso) {
+    if (!dataIso) return '';
+    const data = new Date(dataIso);
+    if (Number.isNaN(data.getTime())) return '';
+    const dia = String(data.getDate()).padStart(2, '0');
+    const mes = String(data.getMonth() + 1).padStart(2, '0');
+    const ano = data.getFullYear();
+    return dia + '/' + mes + '/' + ano;
   }
 
   /* ----------------------------------------------------------
@@ -225,6 +249,102 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  /* ----------------------------------------------------------
+     3.1) MODAL DE SELEÇÃO DE INGRESSOS (mesma pessoa, mais de uma
+          inscrição — ex.: Sexta comprada separada do Sábado)
+     ---------------------------------------------------------- */
+
+  function mostrarModalSelecaoIngressos() {
+    if (modalSelecaoIngressos) modalSelecaoIngressos.classList.add('aberto');
+  }
+
+  function esconderModalSelecaoIngressos() {
+    if (modalSelecaoIngressos) modalSelecaoIngressos.classList.remove('aberto');
+  }
+
+  if (btnFecharModalSelecaoIngressos) {
+    btnFecharModalSelecaoIngressos.addEventListener('click', esconderModalSelecaoIngressos);
+  }
+
+  if (modalSelecaoIngressos) {
+    // Clicar na área escurecida (fora dos cards) também fecha o
+    // modal — só o clique diretamente no overlay conta.
+    modalSelecaoIngressos.addEventListener('click', function (evento) {
+      if (evento.target === modalSelecaoIngressos) esconderModalSelecaoIngressos();
+    });
+  }
+
+  // Tecla Esc fecha o modal de seleção, se estiver aberto no momento.
+  document.addEventListener('keydown', function (evento) {
+    if (evento.key === 'Escape' && modalSelecaoIngressos && modalSelecaoIngressos.classList.contains('aberto')) {
+      esconderModalSelecaoIngressos();
+    }
+  });
+
+  // Devolve o badge visual certo (classe + texto) para o status de
+  // pagamento de UM ingresso — reaproveita as mesmas classes .badge
+  // já usadas no resto do site (.ok/.pending/.fail).
+  function criarBadgeStatus(statusPagamento) {
+    const badge = document.createElement('span');
+    if (statusPagamento === 'aprovado') {
+      badge.className = 'badge ok';
+      badge.textContent = 'Aprovado';
+    } else if (statusPagamento === 'recusado') {
+      badge.className = 'badge fail';
+      badge.textContent = 'Recusado';
+    } else {
+      // Qualquer outro valor (na prática, "pendente") cai aqui —
+      // mesmo critério usado em renderizarResultado().
+      badge.className = 'badge pending';
+      badge.textContent = 'Pendente';
+    }
+    return badge;
+  }
+
+  // Monta um card por ingresso encontrado (tipo + data da inscrição
+  // + badge de status) dentro de #seletorIngressos. Clicar em um
+  // card fecha o modal e carrega a credencial daquele registro
+  // exato — não há PIN adicional aqui, já foi validado uma vez, na
+  // RPC, para TODOS os ingressos dessa pessoa.
+  function renderizarSeletorDeIngressos(ingressos) {
+    if (!seletorIngressos) return;
+    seletorIngressos.innerHTML = '';
+
+    // Mais antigos primeiro — ordem estável e previsível, já que a
+    // RPC não garante nenhuma ordenação específica.
+    const ingressosOrdenados = ingressos.slice().sort(function (a, b) {
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
+
+    ingressosOrdenados.forEach(function (inscricao) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'cartao-participante';
+
+      const tipo = document.createElement('span');
+      tipo.className = 'cartao-participante-nome';
+      tipo.textContent = NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso;
+
+      const dataInscricao = document.createElement('span');
+      dataInscricao.className = 'cartao-participante-data';
+      const dataFormatada = formatarDataBr(inscricao.created_at);
+      dataInscricao.textContent = dataFormatada ? 'Inscrito em ' + dataFormatada : '';
+
+      card.appendChild(tipo);
+      card.appendChild(dataInscricao);
+      card.appendChild(criarBadgeStatus(inscricao.status_pagamento));
+
+      card.addEventListener('click', function () {
+        esconderModalSelecaoIngressos();
+        renderizarResultado(inscricao);
+      });
+
+      seletorIngressos.appendChild(card);
+    });
+
+    mostrarModalSelecaoIngressos();
+  }
+
   function renderizarResultado(inscricao) {
     if (inscricao.status_pagamento === 'aprovado') {
       credencialNome.textContent = obterPrimeiroEUltimoNome(inscricao.nome_completo);
@@ -313,9 +433,19 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // Nome + e-mail + PIN bateram: zera o contador de tentativas
-      // erradas e renderiza a credencial encontrada.
+      // erradas.
       resetarTentativas();
-      renderizarResultado(data[0]);
+
+      if (data.length === 1) {
+        // Um só ingresso: vai direto para a credencial, sem
+        // nenhuma etapa de seleção no meio.
+        renderizarResultado(data[0]);
+      } else {
+        // Mais de um ingresso para essa mesma pessoa (ex.: comprou
+        // Sexta e Sábado separadamente) — mostra um card por
+        // ingresso para ela escolher qual quer ver.
+        renderizarSeletorDeIngressos(data);
+      }
     } catch (erro) {
       console.error('[buscar.js] Erro ao buscar credencial:', erro);
       mostrarErro(erroBuscaCredencial, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
