@@ -82,6 +82,19 @@
            clique de "Ir para Pagamento". -->
       <a class="btn btn-primary" id="btnIrPagamento">Ir para Pagamento</a>
       <p id="erroInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+
+      <!-- Aviso customizado de inscrição duplicada — substitui o
+           alert() nativo. Mostrado/escondido por js/inscricao.js;
+           some sozinho se a pessoa trocar de ingresso, ou pode ser
+           fechado manualmente pelo "×". -->
+      <div class="aviso-duplicidade" id="avisoDuplicidade" style="display:none;">
+        <span class="aviso-duplicidade-icone" aria-hidden="true">⚠️</span>
+        <div class="aviso-duplicidade-texto">
+          <strong>Inscrição já existente</strong>
+          <p id="avisoDuplicidadeTexto"></p>
+        </div>
+        <button type="button" class="aviso-duplicidade-fechar" id="btnFecharAvisoDuplicidade" aria-label="Fechar aviso">×</button>
+      </div>
     </div>
 
     <!-- ============ PASSO 2 — Pagamento Pix (novo passo isolado) ============ -->
@@ -263,6 +276,6 @@
 <!-- 1) conexão com o Supabase; 2) lógica do formulário de inscrição -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js?v=2.0.0"></script>
-<script src="js/inscricao.js?v=4.0.0"></script>
+<script src="js/inscricao.js?v=3.0.0"></script>
 </body>
 </html>
