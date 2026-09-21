@@ -62,6 +62,7 @@
       </div>
 
       <button type="button" class="btn btn-primary" id="btnBuscarCredencial" style="width:100%; text-align:center;">Consultar Credencial</button>
+      <button type="button" class="btn btn-primary" id="btnAbrirTransferencia" style="width:100%; text-align:center; margin-top:10px;">TRANSFERIR INGRESSO</button>
 
       <!-- Mensagens de erro (nada encontrado, falha na busca etc.) -->
       <p id="erroBuscaCredencial" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
@@ -88,6 +89,92 @@
         </div>
         <div class="modal-body">
           <div id="seletorIngressos" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de TRANSFERÊNCIA DE INGRESSO (multi-etapas): reaproveita
+         o mesmo .modal-overlay/.modal-box (fundo escuro, blur,
+         responsivo) do resto do projeto. As 4 etapas são divs dentro
+         do mesmo modal, mostradas/escondidas por js/buscar.js — só
+         uma fica visível por vez. -->
+    <div class="modal-overlay" id="modalTransferencia">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Transferir ingresso</h3>
+          <button type="button" class="modal-fechar" id="btnFecharModalTransferencia" aria-label="Fechar">×</button>
+        </div>
+        <div class="modal-body">
+
+          <!-- ETAPA 1: identificação do titular atual -->
+          <div id="transferenciaEtapa1">
+            <p style="font-size:13px; color:#555; margin:0 0 14px;">Informe os dados de quem já possui o ingresso hoje.</p>
+            <div class="field">
+              <label for="transfNome">Nome completo</label>
+              <input id="transfNome" placeholder="Seu nome completo" autocomplete="name" />
+            </div>
+            <div class="field">
+              <label for="transfEmail">E-mail</label>
+              <input id="transfEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+            </div>
+            <div class="field">
+              <label for="transfPin">PIN de segurança (4 dígitos)</label>
+              <input id="transfPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+            </div>
+
+            <!-- Só aparece quando a pessoa tem mais de um ingresso
+                 aprovado — um card por ingresso, para ela escolher
+                 qual transferir. -->
+            <div id="transferenciaSeletorIngressos" style="display:none; flex-direction:column; gap:10px; margin:14px 0;"></div>
+
+            <button type="button" class="btn btn-primary" id="btnEnviarCodigoTransferencia" style="width:100%; text-align:center;">Enviar Código de Verificação</button>
+            <p id="erroTransferenciaEtapa1" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+          </div>
+
+          <!-- ETAPA 2: validação do código OTP -->
+          <div id="transferenciaEtapa2" style="display:none;">
+            <p style="font-size:13px; color:#555; margin:0 0 14px;">
+              Enviamos um código de 6 dígitos para <strong id="transferenciaEmailDestino"></strong>. Digite-o abaixo para continuar.
+            </p>
+            <div class="field">
+              <label for="transfCodigoOtp">Código de verificação</label>
+              <input id="transfCodigoOtp" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="off" />
+            </div>
+            <button type="button" class="btn btn-primary" id="btnValidarCodigoTransferencia" style="width:100%; text-align:center;">Validar Código</button>
+            <p id="erroTransferenciaEtapa2" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+            <button type="button" class="resumo-voltar" id="btnVoltarEtapa1Transferencia" style="margin-top:14px;">← Voltar</button>
+          </div>
+
+          <!-- ETAPA 3: dados do novo titular -->
+          <div id="transferenciaEtapa3" style="display:none;">
+            <p style="font-size:13px; color:#555; margin:0 0 14px;">Informe os dados de quem vai receber o ingresso.</p>
+            <div class="field">
+              <label for="transfNovoNome">Nome completo</label>
+              <input id="transfNovoNome" placeholder="Nome completo do novo titular" autocomplete="name" />
+            </div>
+            <div class="field">
+              <label for="transfNovoEmail">Novo e-mail</label>
+              <input id="transfNovoEmail" type="email" placeholder="novo@email.com" autocomplete="email" />
+            </div>
+            <div class="field">
+              <label for="transfNovoTelefone">Novo telefone</label>
+              <input id="transfNovoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="numeric" maxlength="15" />
+            </div>
+            <div class="field">
+              <label for="transfNovoPin">Novo PIN de segurança (4 dígitos)</label>
+              <input id="transfNovoPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+            </div>
+            <button type="button" class="btn btn-primary" id="btnConfirmarTransferencia" style="width:100%; text-align:center;">Confirmar Transferência</button>
+            <p id="erroTransferenciaEtapa3" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+          </div>
+
+          <!-- ETAPA 4: conclusão -->
+          <div id="transferenciaEtapa4" style="display:none; text-align:center;">
+            <div style="font-size:36px; margin-bottom:10px;">✅</div>
+            <p id="transferenciaMensagemSucesso" style="font-size:14px; color:#333; line-height:1.6;"></p>
+            <button type="button" class="btn btn-primary" id="btnConcluirTransferencia" style="width:100%; text-align:center; margin-top:14px;">Concluir</button>
+          </div>
+
         </div>
       </div>
     </div>
