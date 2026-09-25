@@ -522,26 +522,42 @@ document.addEventListener('DOMContentLoaded', function () {
   /* ============================================================
      6) TRANSFERÊNCIA DE INGRESSO (modal multi-etapas)
      ------------------------------------------------------------
-     Fluxo: 1) identifica o titular atual (nome+e-mail+PIN, mesma
-     RPC buscar_credencial_individual da busca normal) e escolhe o
-     ingresso, se houver mais de um aprovado; 2) envia e confere um
-     código de verificação por e-mail; 3) coleta os dados do novo
-     titular; 4) confirma.
+     Fluxo: 1) identifica o titular atual (nome+e-mail+PIN) e já
+     dispara o código de verificação — escolhendo o ingresso, se
+     houver mais de um elegível; 2) confere o formato do código
+     recebido por e-mail; 3) coleta os dados do novo titular e
+     confirma a transferência; 4) mensagem final de sucesso.
 
-     ATENÇÃO — SUPOSIÇÕES A CONFIRMAR:
-     - gerar_codigo_transferencia(p_email) foi usada exatamente como
-       especificado.
-     - transferir_ingresso(...) não teve a assinatura completa
-       informada (só "..."). Assumi os parâmetros abaixo
-       (p_codigo_ingresso, p_email_atual, p_codigo_verificacao,
-       p_novo_nome, p_novo_email, p_novo_telefone, p_novo_pin). Se a
-       função real usar outros nomes, é só ajustar o objeto passado
-       para .rpc(...) nesta seção — o resto do fluxo não muda.
-     - Não existe (que eu saiba) uma RPC dedicada só para VALIDAR o
-       código OTP isoladamente. A Etapa 2 só confere localmente que
-       são 6 dígitos e guarda o valor; a validação de verdade
-       acontece dentro de transferir_ingresso, na Etapa 3 — se o
-       código estiver errado, o erro da RPC aparece ali.
+     RPCs usadas (2 chamadas ao todo — nenhum SELECT direto):
+     - iniciar_transferencia_ingresso(p_nome, p_email, p_pin): faz o
+       trabalho da Etapa 1 inteiro num passo só — identifica o
+       titular, já valida a elegibilidade (ex.: recusa com erro
+       próprio um ingresso "pendente") e dispara o código de
+       verificação por e-mail. Devolve um array com os ingressos
+       elegíveis; se vier mais de um, mostramos os cards, e ESCOLHER
+       um deles não faz nova chamada nenhuma — o código já foi
+       enviado, só falta lembrar qual "id" vai para a Etapa 3.
+     - concluir_transferencia_ingresso(p_id_inscricao, p_email_antigo,
+       p_codigo, p_novo_nome, p_novo_email, p_novo_telefone,
+       p_novo_pin): confere o código de verificação E grava os dados
+       do novo titular, tudo de uma vez, na Etapa 3.
+
+     ATENÇÃO — SUPOSIÇÃO A CONFIRMAR: assumi que cada item do array
+     devolvido por iniciar_transferencia_ingresso tem um campo "id"
+     (o id da linha em "inscricoes") — é o que uso como
+     p_id_inscricao na etapa final. Se o campo tiver outro nome (ex.:
+     "id_inscricao"), é só trocar "inscricao.id" por esse nome nas
+     duas funções desta seção que leem esse campo
+     (selecionarIngressoParaTransferir não precisa mudar; é
+     ingressoParaTransferir.id, usado só dentro de
+     confirmarTransferencia, que precisa do ajuste).
+
+     Não existe (que eu saiba) uma RPC dedicada só para VALIDAR o
+     código OTP isoladamente — a Etapa 2 só confere localmente que
+     são 6 dígitos e guarda o valor; a validação de verdade acontece
+     dentro de concluir_transferencia_ingresso, na Etapa 3 — se o
+     código estiver errado, o erro da RPC aparece ali (a pessoa pode
+     voltar à Etapa 2 pelo botão "← Voltar" para corrigir).
      ============================================================ */
 
   const btnAbrirTransferencia = document.getElementById('btnAbrirTransferencia');
@@ -631,12 +647,23 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  function resetarFormularioTransferencia() {
+  // Só esvazia os campos de texto — usada tanto no reset completo
+  // (abaixo) quanto logo depois de uma transferência concluída com
+  // sucesso (nesse caso, sem forçar a volta para a Etapa 1, porque a
+  // Etapa 4 com a mensagem de sucesso precisa continuar visível).
+  function limparCamposFormularioTransferencia() {
     [transfNome, transfEmail, transfPin, transfCodigoOtp, transfNovoNome, transfNovoEmail, transfNovoTelefone, transfNovoPin].forEach(
       function (campo) {
         if (campo) campo.value = '';
       }
     );
+  }
+
+  // Reset completo: campos, erros, seletor de ingressos e estado —
+  // usado ao (re)abrir o modal do zero, sempre voltando para a
+  // Etapa 1.
+  function resetarFormularioTransferencia() {
+    limparCamposFormularioTransferencia();
     [erroTransferenciaEtapa1, erroTransferenciaEtapa2, erroTransferenciaEtapa3].forEach(esconderErro);
     if (transferenciaSeletorIngressos) {
       transferenciaSeletorIngressos.innerHTML = '';
@@ -674,52 +701,31 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   /* ------------------------------------------------------------
-     Etapa 1 → dispara o código de verificação (ou mostra os cards
-     de ingresso, se houver mais de um aprovado)
+     Etapa 1 → identifica o titular E já dispara o código de
+     verificação, tudo numa única RPC. Se houver mais de um ingresso
+     aprovado, mostra os cards para escolher — nesse caso, ESCOLHER
+     o card não faz uma nova chamada: o código já foi enviado no
+     passe único da RPC, só falta guardar QUAL ingresso (o "id") vai
+     para a Etapa 3.
      ------------------------------------------------------------ */
 
-  // Dispara a RPC gerar_codigo_transferencia e avança para a Etapa 2.
-  // Isolada em função própria porque é chamada tanto direto (quando
-  // só existe 1 ingresso aprovado) quanto pelo clique num card do
-  // seletor (quando existe mais de 1).
-  async function enviarCodigoDeVerificacao(email) {
-    esconderErro(erroTransferenciaEtapa1);
-    btnEnviarCodigoTransferencia.disabled = true;
-    const textoOriginalBotao = btnEnviarCodigoTransferencia.textContent;
-    btnEnviarCodigoTransferencia.textContent = 'Enviando código...';
-
-    try {
-      const { error } = await window.supabaseClient.rpc('gerar_codigo_transferencia', {
-        p_email: email,
-      });
-
-      if (error) {
-        mostrarErro(
-          erroTransferenciaEtapa1,
-          obterMensagemErro(error, 'Não foi possível enviar o código de verificação. Tente novamente.')
-        );
-        return;
-      }
-
-      if (transferenciaEmailDestino) transferenciaEmailDestino.textContent = email;
-      mostrarEtapaTransferencia(2);
-    } catch (erro) {
-      console.error('[buscar.js] Erro ao gerar código de transferência:', erro);
-      mostrarErro(erroTransferenciaEtapa1, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
-    } finally {
-      btnEnviarCodigoTransferencia.disabled = false;
-      btnEnviarCodigoTransferencia.textContent = textoOriginalBotao;
-    }
+  // Guarda o ingresso escolhido e avança para a Etapa 2 — chamada
+  // tanto direto (só 1 ingresso elegível) quanto pelo clique num
+  // card do seletor (mais de 1).
+  function selecionarIngressoParaTransferir(ingresso, email) {
+    ingressoParaTransferir = ingresso;
+    if (transferenciaEmailDestino) transferenciaEmailDestino.textContent = email;
+    mostrarEtapaTransferencia(2);
   }
 
-  // Monta um card por ingresso APROVADO encontrado, para a pessoa
+  // Monta um card por ingresso elegível encontrado, para a pessoa
   // escolher qual transferir. Reaproveita a mesma classe visual
   // (.cartao-participante) do seletor da busca normal.
-  function renderizarSeletorParaTransferencia(ingressosAprovados, email) {
+  function renderizarSeletorParaTransferencia(ingressos, email) {
     if (!transferenciaSeletorIngressos) return;
     transferenciaSeletorIngressos.innerHTML = '';
 
-    const ingressosOrdenados = ingressosAprovados.slice().sort(function (a, b) {
+    const ingressosOrdenados = ingressos.slice().sort(function (a, b) {
       return new Date(a.created_at) - new Date(b.created_at);
     });
 
@@ -740,10 +746,11 @@ document.addEventListener('DOMContentLoaded', function () {
       card.appendChild(tipo);
       card.appendChild(dataInscricao);
 
-      card.addEventListener('click', async function () {
-        ingressoParaTransferir = inscricao;
+      // Sem chamada ao Supabase aqui — o código já foi enviado
+      // junto com a busca; só falta lembrar QUAL ingresso escolheu.
+      card.addEventListener('click', function () {
         transferenciaSeletorIngressos.style.display = 'none';
-        await enviarCodigoDeVerificacao(email);
+        selecionarIngressoParaTransferir(inscricao, email);
       });
 
       transferenciaSeletorIngressos.appendChild(card);
@@ -784,40 +791,35 @@ document.addEventListener('DOMContentLoaded', function () {
     btnEnviarCodigoTransferencia.textContent = 'Verificando...';
 
     try {
-      // Mesma RPC da busca normal — reaproveitada aqui só para
-      // identificar a pessoa e localizar os ingressos dela.
-      const { data, error } = await window.supabaseClient.rpc('buscar_credencial_individual', {
+      // Uma única RPC: identifica nome+e-mail+PIN, já valida se há
+      // ingresso elegível (ex.: recusa "pendente" com erro próprio)
+      // e dispara o código de verificação — tudo de uma vez.
+      const { data, error } = await window.supabaseClient.rpc('iniciar_transferencia_ingresso', {
         p_nome: nome,
         p_email: email,
         p_pin: pin,
       });
 
       if (error) {
-        mostrarErro(erroTransferenciaEtapa1, obterMensagemErro(error, 'Não foi possível verificar seus dados. Tente novamente.'));
+        // A mensagem já vem pronta do servidor (ex.: "PIN incorreto",
+        // "ingresso pendente não pode ser transferido") — exibida
+        // como está, sem avançar de etapa.
+        mostrarErro(
+          erroTransferenciaEtapa1,
+          obterMensagemErro(error, 'Não foi possível iniciar a transferência. Verifique os dados e tente novamente.')
+        );
         return;
       }
 
       if (!Array.isArray(data) || data.length === 0) {
-        mostrarErro(erroTransferenciaEtapa1, 'Não encontramos nenhuma inscrição com esses dados.');
+        mostrarErro(erroTransferenciaEtapa1, 'Não encontramos nenhum ingresso elegível para transferência com esses dados.');
         return;
       }
 
-      // REGRA DE NEGÓCIO: só ingressos com pagamento aprovado podem
-      // ser transferidos — pendente/recusado ficam de fora da lista.
-      const aprovados = data.filter(function (inscricao) {
-        return inscricao.status_pagamento === 'aprovado';
-      });
-
-      if (aprovados.length === 0) {
-        mostrarErro(erroTransferenciaEtapa1, 'Apenas ingressos com pagamento APROVADO podem ser transferidos.');
-        return;
-      }
-
-      if (aprovados.length === 1) {
-        ingressoParaTransferir = aprovados[0];
-        await enviarCodigoDeVerificacao(email);
+      if (data.length === 1) {
+        selecionarIngressoParaTransferir(data[0], email);
       } else {
-        renderizarSeletorParaTransferencia(aprovados, email);
+        renderizarSeletorParaTransferencia(data, email);
       }
     } catch (erro) {
       console.error('[buscar.js] Erro ao iniciar transferência:', erro);
@@ -903,10 +905,10 @@ document.addEventListener('DOMContentLoaded', function () {
     btnConfirmarTransferencia.textContent = 'Transferindo...';
 
     try {
-      const { error } = await window.supabaseClient.rpc('transferir_ingresso', {
-        p_codigo_ingresso: ingressoParaTransferir.codigo_ingresso,
-        p_email_atual: transfEmail.value.trim(),
-        p_codigo_verificacao: codigoVerificacaoTransferencia,
+      const { data, error } = await window.supabaseClient.rpc('concluir_transferencia_ingresso', {
+        p_id_inscricao: ingressoParaTransferir.id,
+        p_email_antigo: transfEmail.value.trim(),
+        p_codigo: codigoVerificacaoTransferencia,
         p_novo_nome: novoNome,
         p_novo_email: novoEmail,
         p_novo_telefone: novoTelefone,
@@ -931,6 +933,16 @@ document.addEventListener('DOMContentLoaded', function () {
           novoNome +
           '. A nova credencial já pode ser consultada por ele(a).';
       }
+
+      // Sucesso: limpa os campos preenchidos (nome/e-mail/PIN
+      // antigos, código, dados do novo titular) — a Etapa 4 fica
+      // visível com a mensagem, só os INPUTS são esvaziados, para
+      // não deixar dado de uma transferência já concluída à mostra
+      // se a pessoa reabrir o modal sem querer.
+      limparCamposFormularioTransferencia();
+      ingressoParaTransferir = null;
+      codigoVerificacaoTransferencia = null;
+
       mostrarEtapaTransferencia(4);
     } catch (erro) {
       console.error('[buscar.js] Erro ao confirmar transferência:', erro);
