@@ -524,11 +524,12 @@ document.addEventListener('DOMContentLoaded', function () {
      ------------------------------------------------------------
      Fluxo: 1) identifica o titular atual (nome+e-mail+PIN) e já
      dispara o código de verificação — escolhendo o ingresso, se
-     houver mais de um elegível; 2) confere o formato do código
-     recebido por e-mail; 3) coleta os dados do novo titular e
-     confirma a transferência; 4) mensagem final de sucesso.
+     houver mais de um elegível; 2) valida de verdade, no servidor,
+     o código de 6 dígitos recebido por e-mail; 3) coleta os dados
+     do novo titular e confirma a transferência; 4) mensagem final
+     de sucesso.
 
-     RPCs usadas (2 chamadas ao todo — nenhum SELECT direto):
+     RPCs usadas (3 chamadas ao todo — nenhum SELECT direto):
      - iniciar_transferencia_ingresso(p_nome, p_email, p_pin): faz o
        trabalho da Etapa 1 inteiro num passo só — identifica o
        titular, já valida a elegibilidade (ex.: recusa com erro
@@ -537,27 +538,30 @@ document.addEventListener('DOMContentLoaded', function () {
        elegíveis; se vier mais de um, mostramos os cards, e ESCOLHER
        um deles não faz nova chamada nenhuma — o código já foi
        enviado, só falta lembrar qual "id" vai para a Etapa 3.
+     - validar_codigo_transferencia(p_email, p_codigo): chamada no
+       clique de "Validar Código" (Etapa 2) — só avança para a
+       Etapa 3 se devolver um valor "truthy" (assumi um booleano).
+       Se devolver false/vazio, ou der erro, a pessoa fica na Etapa
+       2 com o aviso correspondente.
      - concluir_transferencia_ingresso(p_id_inscricao, p_email_antigo,
        p_codigo, p_novo_nome, p_novo_email, p_novo_telefone,
-       p_novo_pin): confere o código de verificação E grava os dados
-       do novo titular, tudo de uma vez, na Etapa 3.
+       p_novo_pin): grava os dados do novo titular e efetiva a troca,
+       na Etapa 3. Como o código já foi validado na Etapa 2, aqui ele
+       só precisa ser reenviado para a RPC confirmar contra o mesmo
+       valor (ou simplesmente para registro) — se a sua
+       implementação preferir não validar de novo aqui, não muda
+       nada do lado do JS.
 
-     ATENÇÃO — SUPOSIÇÃO A CONFIRMAR: assumi que cada item do array
-     devolvido por iniciar_transferencia_ingresso tem um campo "id"
-     (o id da linha em "inscricoes") — é o que uso como
-     p_id_inscricao na etapa final. Se o campo tiver outro nome (ex.:
-     "id_inscricao"), é só trocar "inscricao.id" por esse nome nas
-     duas funções desta seção que leem esse campo
-     (selecionarIngressoParaTransferir não precisa mudar; é
-     ingressoParaTransferir.id, usado só dentro de
-     confirmarTransferencia, que precisa do ajuste).
-
-     Não existe (que eu saiba) uma RPC dedicada só para VALIDAR o
-     código OTP isoladamente — a Etapa 2 só confere localmente que
-     são 6 dígitos e guarda o valor; a validação de verdade acontece
-     dentro de concluir_transferencia_ingresso, na Etapa 3 — se o
-     código estiver errado, o erro da RPC aparece ali (a pessoa pode
-     voltar à Etapa 2 pelo botão "← Voltar" para corrigir).
+     ATENÇÃO — SUPOSIÇÕES A CONFIRMAR:
+     1) validar_codigo_transferencia devolve um booleano (true =
+        código certo). Se devolver outra coisa (ex.: um objeto ou uma
+        contagem), ajuste só o "if (!data)" dentro de
+        validarCodigoEtapa2.
+     2) Cada item do array devolvido por iniciar_transferencia_ingresso
+        tem um campo "id" (o id da linha em "inscricoes") — é o que
+        uso como p_id_inscricao na etapa final. Se o campo tiver
+        outro nome (ex.: "id_inscricao"), troque "ingressoParaTransferir.id"
+        por esse nome dentro de confirmarTransferencia.
      ============================================================ */
 
   const btnAbrirTransferencia = document.getElementById('btnAbrirTransferencia');
@@ -839,9 +843,10 @@ document.addEventListener('DOMContentLoaded', function () {
      acontece dentro de transferir_ingresso, na Etapa 3)
      ------------------------------------------------------------ */
 
-  function validarCodigoEtapa2() {
+  async function validarCodigoEtapa2() {
     esconderErro(erroTransferenciaEtapa2);
     const codigo = transfCodigoOtp.value.trim();
+    const email = transfEmail.value.trim();
 
     if (!/^\d{6}$/.test(codigo)) {
       mostrarErro(erroTransferenciaEtapa2, 'Digite o código de 6 dígitos recebido por e-mail.');
@@ -849,8 +854,43 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    codigoVerificacaoTransferencia = codigo;
-    mostrarEtapaTransferencia(3);
+    btnValidarCodigoTransferencia.disabled = true;
+    const textoOriginalBotao = btnValidarCodigoTransferencia.textContent;
+    btnValidarCodigoTransferencia.textContent = 'Validando...';
+
+    try {
+      // Confere de verdade o código no servidor antes de deixar
+      // seguir para a Etapa 3 — o formato (6 dígitos) já foi checado
+      // acima, mas só essa RPC sabe se é realmente o código certo,
+      // ainda válido, para este e-mail.
+      const { data, error } = await window.supabaseClient.rpc('validar_codigo_transferencia', {
+        p_email: email,
+        p_codigo: codigo,
+      });
+
+      if (error) {
+        mostrarErro(
+          erroTransferenciaEtapa2,
+          obterMensagemErro(error, 'Não foi possível validar o código. Tente novamente.')
+        );
+        return;
+      }
+
+      if (!data) {
+        mostrarErro(erroTransferenciaEtapa2, 'Código incorreto ou expirado. Confira e tente novamente.');
+        transfCodigoOtp.focus();
+        return;
+      }
+
+      codigoVerificacaoTransferencia = codigo;
+      mostrarEtapaTransferencia(3);
+    } catch (erro) {
+      console.error('[buscar.js] Erro ao validar código de transferência:', erro);
+      mostrarErro(erroTransferenciaEtapa2, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
+    } finally {
+      btnValidarCodigoTransferencia.disabled = false;
+      btnValidarCodigoTransferencia.textContent = textoOriginalBotao;
+    }
   }
 
   if (btnValidarCodigoTransferencia) {
