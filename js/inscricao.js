@@ -4,24 +4,23 @@
    Lógica do PORTAL DE INSCRIÇÃO (inscricao.html), em 3 passos
    isolados (Passo 1: dados pessoais + ingresso; Passo 2: Pix +
    comprovante; Passo 3: resumo + PIN + confirmação):
-     1) Seleção de ingresso (Sexta / Sábado / Combo), com preço,
-        chave Pix e NOME do lote ativo atualizados dinamicamente a
-        partir da tabela "lotes" do Supabase — carregados ao abrir
-        a página, revalidados em tempo real na saída do Passo 1
-        (trava antifraude contra troca de lote no meio do
-        preenchimento) e mantidos em dia via Supabase Realtime,
-        sem precisar recarregar a página;
+     1) Seleção de ingresso (Sexta / Sábado / Combo);
+     1.1) Preços dos 3 ingressos e a chave Pix, carregados uma única
+          vez ao abrir a página via a RPC obter_configuracoes_checkout
+          — SEM nenhuma lógica de "lote" (não existe mais lote ativo,
+          nem lote esgotado, nem Realtime de preço mudando sozinho);
      2) Máscara de telefone (Passo 1) e do PIN (Passo 3);
      3) Botão "Copiar Chave Pix" (Passo 2);
-     4) Checagem de inscrição duplicada (mesmo nome + e-mail);
+     4) Checagem de inscrição duplicada (nome + e-mail + tipo de
+        ingresso) antes de avançar para o pagamento;
      5) Validação de cada passo isoladamente: dados pessoais
-        (Passo 1), comprovante (Passo 2) e PIN com dupla
-        confirmação (Passo 3) — e a navegação entre os 3 passos e
-        os 2 botões "← Voltar";
+        (Passo 1), comprovante (Passo 2) e PIN com dupla confirmação
+        (Passo 3) — e a navegação entre os 3 passos e os 2 botões
+        "← Voltar";
      6) Upload do comprovante de Pix para o Supabase Storage;
-     7) Geração do código único do ingresso e INSERT na tabela
-        "inscricoes" do Supabase (incluindo o PIN e o tipo de
-        ingresso normalizado/validado);
+     7) Criação da inscrição via RPC criar_inscricao_segura (não
+        mais um INSERT direto na tabela — nem geração de código no
+        cliente: o servidor cuida de tudo isso agora);
      8) Tela de sucesso com status "Aguardando Validação do Pix" e
         exibição do PIN cadastrado.
 
@@ -30,17 +29,39 @@
        window.SUPABASE_COMPROVANTES_BUCKET), carregado ANTES
        deste arquivo.
 
-   ATENÇÃO — coluna do nome do lote (assumida): a tabela "lotes" foi
-   consultada assumindo uma coluna chamada "nome" (ex.: "1º Lote",
-   "2º Lote"). Se na sua tabela ela tiver outro nome (numero_lote,
-   titulo etc.), troque só a constante COLUNA_NOME_LOTE logo no
-   início da seção 1.1 — nada mais no arquivo depende disso.
+   ATENÇÃO — SUPOSIÇÕES A CONFIRMAR (não recebi a definição exata
+   das duas RPCs, só o pedido para chamá-las):
+
+   1) obter_configuracoes_checkout — assumi que é chamada SEM
+      parâmetros e devolve (como objeto único, ou como array de 1
+      item — o código trata os dois formatos) as colunas
+      "preco_sexta", "preco_sabado", "preco_combo" e "chave_pix".
+      Importante: assumi UMA chave Pix só para o evento inteiro (não
+      mais uma por tipo de ingresso, como no antigo sistema de
+      lotes) — é por isso que #chavePixTexto agora recebe um valor
+      só, independente do card selecionado. Se a sua RPC ainda
+      devolver uma chave por tipo, me avise que eu adapto de volta
+      para o esquema "uma chave por card".
+
+   2) criar_inscricao_segura — você especificou 5 parâmetros
+      (p_nome, p_email, p_telefone, p_pin, p_tipo_ingresso). Mantive
+      esses 5 exatamente como pedido, mas também incluí um 6º,
+      "p_comprovante_url", com a URL que acabou de subir para o
+      Storage. Sem esse parâmetro, o comprovante enviado fica sem
+      NENHUM vínculo com a inscrição criada — a equipe não teria
+      como conferir o pagamento no painel administrativo. Se a sua
+      RPC realmente não aceita esse parâmetro (ou usa outro nome),
+      é uma linha só para remover/ajustar — ver a função
+      "criarInscricaoSegura" na seção 8.
+      Também assumi que a RPC devolve (objeto único ou array de 1
+      item) a linha criada, incluindo "codigo_ingresso" e
+      "pin_seguranca" — usados na tela de sucesso.
 
    A contagem regressiva, o menu mobile e o scroll reveal da
    Landing Page NÃO estão mais aqui — ver js/main.js. A consulta de
-   credencial (busca por e-mail/PIN, QR code, download em PNG)
-   também NÃO está mais aqui — foi para js/buscar.js, que roda em
-   buscar.html. Este arquivo não depende do QRCode.js.
+   credencial (busca por nome/e-mail/PIN, QR code, download em PNG,
+   transferência de ingresso) também NÃO está mais aqui — foi para
+   js/buscar.js, que roda em buscar.html.
 
    Nenhuma troca de passo/tela neste arquivo dispara rolagem
    automática (scrollIntoView) nem depende de âncoras "#" — a
@@ -51,15 +72,7 @@
 document.addEventListener('DOMContentLoaded', function () {
   'use strict';
 
-  // Marcador de diagnóstico: imprime sempre que o arquivo roda, com
-  // uma "assinatura" fácil de conferir no console remoto do celular
-  // (ex.: chrome://inspect no Android, Web Inspector no iOS via Mac).
-  // Se você abrir o site no celular e NÃO ver esta linha (ou vir uma
-  // sem "sem select() no insert"), o navegador ainda está rodando um
-  // js/inscricao.js antigo em cache — não é mais um bug de código,
-  // é cache. A correção nesse caso é bumpar a versão no <script> do
-  // inscricao.html (ex.: troque "?v=3.0.0" por "?v=4.0.0").
-  console.log('[inscricao.js] build: RLS-fix-sem-select-no-insert + rpc-duplicidade');
+  console.log('[inscricao.js] build: sem lógica de lotes — preços/Pix via RPC, criação via RPC segura');
 
   /* ----------------------------------------------------------
      1) SELEÇÃO DE INGRESSO (combos)
@@ -73,52 +86,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const listaCombos = document.querySelectorAll('#combos .combo');
   const totalValorEl = document.getElementById('totalValor');
-  const chavePixTextoEl = document.getElementById('chavePixTexto');
-
-  // Elemento opcional (ver nota no cabeçalho do arquivo) onde o
-  // nome do lote ativo é exibido, ex.: "Pagamento referente ao 2º
-  // Lote". Se não existir no HTML, fica só como null e o código
-  // que o usa (atualizarNomeLoteNoDOM) simplesmente não faz nada.
-  const nomeLoteAtivoEl = document.getElementById('nomeLoteAtivo');
-
-  // Modal exibido quando NÃO existe nenhum lote com ativo = true
-  // (todas as vagas esgotadas). Usado em 3 pontos: carregamento
-  // inicial da página, revalidação no clique de "Ir para Pagamento"
-  // e o listener do Realtime (seções 1.1/1.2/5).
-  const modalLoteEsgotado = document.getElementById('modalLoteEsgotado');
-  const btnFecharModalLoteEsgotado = document.getElementById('btnFecharModalLoteEsgotado');
-
-  function mostrarModalLoteEsgotado() {
-    if (!modalLoteEsgotado) return;
-    modalLoteEsgotado.classList.add('aberto');
-  }
-
-  function esconderModalLoteEsgotado() {
-    if (!modalLoteEsgotado) return;
-    modalLoteEsgotado.classList.remove('aberto');
-  }
-
-  if (btnFecharModalLoteEsgotado) {
-    btnFecharModalLoteEsgotado.addEventListener('click', esconderModalLoteEsgotado);
-  }
 
   // Estado da inscrição em andamento. É atualizado conforme o
-  // usuário navega pelos passos do formulário. "nomeLote" guarda o
-  // nome do lote ativo no momento (ex.: "2º Lote"), usado tanto na
-  // exibição quanto na mensagem da trava antifraude.
+  // usuário navega pelos passos do formulário.
   const estadoInscricao = {
     tipoIngresso: 'COMBO',
     valor: 25.0,
-    nomeLote: null,
   };
-
-  // Chave Pix de cada tipo de ingresso, preenchida por
-  // aplicarLoteNoEstado() (seção 1.1) assim que a resposta do
-  // Supabase chega. Começa vazio de propósito: enquanto isso não
-  // acontece, selecionarCombo() simplesmente não mexe no texto da
-  // chave Pix, mantendo o valor estático do HTML até o lote
-  // carregar.
-  let chavesPixPorCombo = {};
 
   // Aviso customizado de inscrição duplicada (Passo 1) — substitui
   // o alert() nativo do navegador. Precisa ser declarado ANTES da
@@ -143,12 +117,6 @@ document.addEventListener('DOMContentLoaded', function () {
     btnFecharAvisoDuplicidade.addEventListener('click', esconderAvisoDuplicidade);
   }
 
-  // Identificador (id) do lote atualmente aplicado na tela. Usado
-  // pela trava antifraude (seção 1.1/5) para detectar se o lote
-  // ativo mudou entre o carregamento da página e o clique em
-  // "Continuar". Começa null (nenhum lote aplicado ainda).
-  let loteAtivoIdAtual = null;
-
   // Formata um número para o padrão monetário brasileiro (R$ 0,00).
   function formatarMoeda(valor) {
     return valor.toLocaleString('pt-BR', {
@@ -161,8 +129,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // Aceita tanto "25.00" quanto "25,50" (vírgula decimal) e devolve
   // NaN para vazio/nulo/texto inválido, para quem chama decidir o
   // que fazer. Única definição desta função no arquivo — usada tanto
-  // ao aplicar os preços do lote (1.1) quanto ao sincronizar o
-  // estado antes do resumo/confirmação (seções 5 e 8).
+  // ao aplicar os preços (1.1) quanto ao sincronizar o estado antes
+  // do resumo/confirmação (seção 5).
   function lerValorNumerico(valorBruto) {
     if (valorBruto === null || valorBruto === undefined) return NaN;
     const texto = String(valorBruto).trim().replace(',', '.');
@@ -187,15 +155,6 @@ document.addEventListener('DOMContentLoaded', function () {
     // Trocar de ingresso pode resolver o conflito que gerou o aviso
     // de duplicidade (ele é específico por tipo) — some sozinho.
     esconderAvisoDuplicidade();
-
-    // Troca a chave Pix exibida conforme o ingresso escolhido — cada
-    // tipo tem sua própria chave (chave_pix_sexta/sabado/combo). Só
-    // atualiza quando já tivermos essa informação do lote ativo;
-    // antes disso, o texto estático do HTML permanece.
-    const chavePixDoCombo = chavesPixPorCombo[estadoInscricao.tipoIngresso];
-    if (chavePixTextoEl && chavePixDoCombo) {
-      chavePixTextoEl.textContent = chavePixDoCombo;
-    }
   }
 
   listaCombos.forEach(function (comboEl) {
@@ -212,26 +171,21 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     1.1) LOTE ATIVO: preços, chaves Pix e nome do lote vindos
-          do Supabase
+     1.1) CONFIGURAÇÕES DE CHECKOUT: preços dos 3 ingressos e a
+          chave Pix, via RPC obter_configuracoes_checkout
      ---------------------------------------------------------- */
 
-  // Nome da coluna com o nome/identificação do lote (ex.: "1º
-  // Lote"). Ver nota de atenção no cabeçalho do arquivo.
-  const COLUNA_NOME_LOTE = 'nome';
+  const chavePixTextoEl = document.getElementById('chavePixTexto');
 
-  // Atualiza UM card: o atributo data-preco (fonte de verdade para o
-  // JS) e o texto visível dentro de .preco. O <small>/pessoa</small>
-  // é reconstruído junto para não se perder ao trocar o conteúdo.
-  // Formata só o número, sem o "R$" (ex.: "20,00", "1.234,56") — usado
-  // para montar o preço em 2 linhas dentro do card (ver .preco-cifrao/
-  // .preco-valor no styles.css). formatarMoeda() continua igual e
-  // intacta para os outros usos (#totalValor, resumo), que mostram
-  // "R$ 20,00" numa linha só.
+  // Formata só o número, sem o "R$" (ex.: "20,00") — usado para
+  // montar o preço em 2 linhas dentro do card (.preco-cifrao /
+  // .preco-valor, já existentes no styles.css).
   function formatarNumeroBRL(valor) {
     return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  // Atualiza UM card: o atributo data-preco (fonte de verdade para o
+  // JS) e o texto visível dentro de .preco, no formato em 2 linhas.
   function aplicarPrecoNoCard(comboEl, preco) {
     const valor = lerValorNumerico(preco);
     if (isNaN(valor)) return false;
@@ -239,10 +193,6 @@ document.addEventListener('DOMContentLoaded', function () {
     comboEl.setAttribute('data-preco', valor.toFixed(2));
     const precoEl = comboEl.querySelector('.preco');
     if (precoEl) {
-      // Mesma estrutura em 2 linhas do HTML estático: "R$" na
-      // primeira, o valor + "/pessoa" na segunda — senão, assim que
-      // o lote carrega do Supabase, o preço volta pro formato antigo
-      // de uma linha só e "vaza" da largura do card de novo.
       precoEl.innerHTML =
         '<span class="preco-cifrao">R$</span>' +
         '<span class="preco-valor">' + formatarNumeroBRL(valor) + '<small>/pessoa</small></span>';
@@ -250,63 +200,43 @@ document.addEventListener('DOMContentLoaded', function () {
     return true;
   }
 
-  // Cada tipo de ingresso tem sua PRÓPRIA coluna de preço E de chave
-  // Pix na tabela "lotes" — não existe uma "chave_pix" genérica.
-  const MAPA_CARDS_LOTE = {
-    SEXTA: { seletor: '.combo[data-id="SEXTA"]', colunaPreco: 'preco_sexta', colunaPix: 'chave_pix_sexta' },
-    SABADO: { seletor: '.combo[data-id="SABADO"]', colunaPreco: 'preco_sabado', colunaPix: 'chave_pix_sabado' },
-    COMBO: { seletor: '.combo[data-id="COMBO"]', colunaPreco: 'preco_combo', colunaPix: 'chave_pix_combo' },
+  // Cada tipo de ingresso tem sua própria coluna de preço na
+  // configuração de checkout.
+  const MAPA_CARDS_PRECO = {
+    SEXTA: { seletor: '.combo[data-id="SEXTA"]', coluna: 'preco_sexta' },
+    SABADO: { seletor: '.combo[data-id="SABADO"]', coluna: 'preco_sabado' },
+    COMBO: { seletor: '.combo[data-id="COMBO"]', coluna: 'preco_combo' },
   };
 
-  // Escreve o nome do lote ativo no elemento opcional #nomeLoteAtivo
-  // (ver nota no cabeçalho do arquivo). Sem esse elemento no HTML,
-  // não faz nada — o restante do fluxo funciona igual.
-  function atualizarNomeLoteNoDOM() {
-    if (!nomeLoteAtivoEl) return;
-    if (!estadoInscricao.nomeLote) return;
-    // Só o nome (ex.: "3º Lote") — o prefixo "Pagamento referente
-    // ao " já é texto fixo no HTML, antes do <span>. Escrever o
-    // prefixo aqui de novo é o que causava o "Pagamento referente
-    // ao Pagamento referente ao 3º Lote".
-    nomeLoteAtivoEl.textContent = estadoInscricao.nomeLote;
-  }
-
-  // Busca SÓ o lote com ativo = true, sem aplicar nada — usada tanto
-  // no carregamento inicial da página quanto na revalidação em
-  // tempo real (trava antifraude) e no listener do Realtime. Manter
-  // a consulta centralizada aqui garante que os três pontos de uso
-  // busquem exatamente os mesmos campos, da mesma forma.
-  async function buscarLoteAtivoNoSupabase() {
+  async function carregarConfiguracoesCheckout() {
     if (!window.supabaseClient) {
-      return { data: null, error: new Error('window.supabaseClient não existe ainda.') };
+      console.error('[inscricao.js] carregarConfiguracoesCheckout: window.supabaseClient não existe ainda — verifique a ordem dos <script> no HTML.');
+      return;
     }
 
-    return window.supabaseClient
-      .from('lotes')
-      .select(
-        'id, ' + COLUNA_NOME_LOTE + ', preco_sexta, preco_sabado, preco_combo, ' +
-        'chave_pix_sexta, chave_pix_sabado, chave_pix_combo'
-      )
-      .eq('ativo', true)
-      .limit(1)
-      .maybeSingle();
-  }
+    const { data, error } = await window.supabaseClient.rpc('obter_configuracoes_checkout');
 
-  // Aplica os dados de UM lote (já buscado) no DOM e no estado:
-  // preço + chave Pix de cada card, nome do lote, e re-seleciona o
-  // card atualmente marcado para o #totalValor/chave Pix/estado
-  // refletirem o valor novo imediatamente. Reaproveitada pelo
-  // carregamento inicial, pela trava antifraude (seção 5) e pelo
-  // listener do Realtime (1.2) — assim os três pontos de entrada
-  // atualizam a tela exatamente da mesma forma.
-  function aplicarLoteNoEstado(data) {
-    if (!data) return;
+    // Diagnóstico: mostra exatamente o que o Supabase devolveu, para
+    // facilitar identificar RLS bloqueando a RPC, nome de coluna
+    // incorreto, etc., sem precisar depurar às cegas.
+    console.log('[inscricao.js] carregarConfiguracoesCheckout -> resposta do Supabase:', { data, error });
 
-    if (data.id !== undefined) loteAtivoIdAtual = data.id;
-    if (data[COLUNA_NOME_LOTE]) estadoInscricao.nomeLote = data[COLUNA_NOME_LOTE];
+    if (error) {
+      console.error('[inscricao.js] Erro ao carregar as configurações de checkout:', error.message || error);
+      return;
+    }
 
-    Object.keys(MAPA_CARDS_LOTE).forEach(function (idCombo) {
-      const { seletor, colunaPreco, colunaPix } = MAPA_CARDS_LOTE[idCombo];
+    // A RPC pode devolver um objeto único ou um array com 1 item,
+    // dependendo de como foi definida no Postgres — cobrimos os
+    // dois formatos.
+    const config = Array.isArray(data) ? data[0] : data;
+    if (!config) {
+      console.warn('[inscricao.js] obter_configuracoes_checkout não devolveu nenhuma configuração — mantendo os preços estáticos do HTML.');
+      return;
+    }
+
+    Object.keys(MAPA_CARDS_PRECO).forEach(function (idCombo) {
+      const { seletor, coluna } = MAPA_CARDS_PRECO[idCombo];
       const comboEl = document.querySelector(seletor);
 
       if (!comboEl) {
@@ -314,120 +244,37 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      const precoAplicado = aplicarPrecoNoCard(comboEl, data[colunaPreco]);
+      const precoAplicado = aplicarPrecoNoCard(comboEl, config[coluna]);
       if (!precoAplicado) {
         console.error(
-          '[inscricao.js] Coluna "' + colunaPreco + '" veio inválida/ausente para o card ' + idCombo + ':',
-          JSON.stringify(data[colunaPreco])
-        );
-      }
-
-      const chavePixDoCard = data[colunaPix];
-      if (chavePixDoCard) {
-        chavesPixPorCombo[idCombo] = chavePixDoCard;
-      } else {
-        console.warn(
-          '[inscricao.js] Coluna "' + colunaPix + '" veio vazia/nula para o card ' + idCombo +
-          ' — mantendo a chave Pix estática do HTML para esse ingresso.'
+          '[inscricao.js] Coluna "' + coluna + '" veio inválida/ausente para o card ' + idCombo + ':',
+          JSON.stringify(config[coluna])
         );
       }
     });
 
-    atualizarNomeLoteNoDOM();
+    if (chavePixTextoEl && config.chave_pix) {
+      chavePixTextoEl.textContent = config.chave_pix;
+    } else if (!config.chave_pix) {
+      console.warn('[inscricao.js] "chave_pix" veio vazia/nula nas configurações de checkout — mantendo a chave estática do HTML.');
+    }
 
-    // Re-seleciona o card já marcado: agora que chavesPixPorCombo e
-    // os data-preco foram atualizados, isso aplica de uma vez o
-    // preço, o #totalValor e a chave Pix corretos do lote.
+    // Re-seleciona o card já marcado para o #totalValor refletir o
+    // preço novo imediatamente (a seleção inicial rodou antes desta
+    // consulta terminar).
     const comboSelecionado = document.querySelector('#combos .combo[data-selected="true"]') || comboInicial;
     if (comboSelecionado) {
       selecionarCombo(comboSelecionado);
     }
 
-    // Se a pessoa já estiver olhando o Passo 2 (Resumo) quando o
-    // lote mudar via Realtime, mantém o resumo em sincronia — sem
-    // trocar de tela nem mexer nos campos já preenchidos por ela.
+    // Se a pessoa já estiver no Passo 3 (resumo) quando isso chegar,
+    // mantém o resumo em sincronia com o preço mais recente.
     if (typeof telaResumo !== 'undefined' && telaResumo && telaResumo.style.display === 'block') {
       preencherResumoComEstadoAtual();
     }
   }
 
-  async function carregarLoteAtivo() {
-    const { data, error } = await buscarLoteAtivoNoSupabase();
-
-    // Diagnóstico: mostra exatamente o que o Supabase devolveu, para
-    // facilitar identificar RLS bloqueando SELECT, ausência de lote
-    // ativo, ou nome de coluna incorreto sem precisar depurar às
-    // cegas.
-    console.log('[inscricao.js] carregarLoteAtivo -> resposta do Supabase:', { data, error });
-
-    if (error) {
-      console.error(
-        '[inscricao.js] Erro ao consultar a tabela "lotes" (provável causa: RLS bloqueando SELECT para o papel "anon"). Detalhe:',
-        error.message || error
-      );
-      return;
-    }
-    if (!data) {
-      console.warn('[inscricao.js] Nenhuma linha em "lotes" com ativo = true — exibindo o modal de inscrições encerradas.');
-      mostrarModalLoteEsgotado();
-      return;
-    }
-
-    esconderModalLoteEsgotado(); // por garantia, caso um lote tenha voltado a ficar ativo
-    aplicarLoteNoEstado(data);
-  }
-
-  carregarLoteAtivo();
-
-  /* ----------------------------------------------------------
-     1.2) REALTIME: mantém preços, chaves Pix e nome do lote em
-          dia automaticamente, sem recarregar a página
-     ---------------------------------------------------------- */
-
-  // Escuta QUALQUER mudança (INSERT, UPDATE ou DELETE) na tabela
-  // "lotes" e, ao ser avisado, reconsulta "qual é o lote ativo
-  // agora" — não confiamos direto no conteúdo do evento
-  // (payload.new/old) porque ele é só a LINHA que mudou: pode ser a
-  // ativação de um lote novo, a desativação do antigo, uma edição
-  // de preço numa linha que nem está ativa, etc. Refazer a mesma
-  // consulta de sempre garante que o que aparece na tela é sempre o
-  // lote realmente ativo, nunca um instantâneo parcial.
-  //
-  // Só mexe nos cards/preços/chave Pix e no nome do lote — nunca nos
-  // campos do formulário (nome, e-mail, telefone, comprovante), então
-  // a digitação da pessoa nunca é interrompida por isso.
-  if (window.supabaseClient && typeof window.supabaseClient.channel === 'function') {
-    window.supabaseClient
-      .channel('lotes-mudancas-inscricao')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'lotes' },
-        function (payload) {
-          console.log('[inscricao.js] Mudança detectada na tabela "lotes" via Realtime:', payload);
-          buscarLoteAtivoNoSupabase().then(function (resultado) {
-            if (resultado.error) {
-              console.error('[inscricao.js] Erro ao reconsultar o lote ativo após mudança via Realtime:', resultado.error);
-              return;
-            }
-            if (resultado.data) {
-              esconderModalLoteEsgotado();
-              aplicarLoteNoEstado(resultado.data);
-            } else {
-              // O último lote acabou de ser desativado, em tempo
-              // real. Não interrompe quem já concluiu a inscrição
-              // (tela de sucesso) — só quem ainda está navegando.
-              const jaConcluiu = telaSucesso && telaSucesso.style.display === 'block';
-              if (!jaConcluiu) {
-                mostrarModalLoteEsgotado();
-              }
-            }
-          });
-        }
-      )
-      .subscribe();
-  } else {
-    console.warn('[inscricao.js] Supabase Realtime indisponível (window.supabaseClient.channel não existe) — preços só atualizam no carregamento da página e no clique em "Continuar".');
-  }
+  carregarConfiguracoesCheckout();
 
   /* ----------------------------------------------------------
      2) ELEMENTOS DOS 3 PASSOS DO FORMULÁRIO
@@ -509,8 +356,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const ddd = digitos.slice(0, 2);
     const restante = digitos.slice(2);
 
-    // Até 10 dígitos no total (2 do DDD + 8 do número): formato de
-    // telefone fixo, bloco de 4 + 4. Com 11 dígitos: celular, 5 + 4.
     const tamanhoPrimeiroBloco = digitos.length <= 10 ? 4 : 5;
     const primeiroBloco = restante.slice(0, tamanhoPrimeiroBloco);
     const segundoBloco = restante.slice(tamanhoPrimeiroBloco);
@@ -532,10 +377,6 @@ document.addEventListener('DOMContentLoaded', function () {
      3.1) MÁSCARA DO PIN DE SEGURANÇA (4 dígitos numéricos)
      ---------------------------------------------------------- */
 
-  // Mesmo princípio da máscara de telefone: descarta qualquer
-  // caractere que não seja dígito e trava em 4 posições, nos dois
-  // campos (PIN e confirmação), para o usuário nunca conseguir
-  // digitar letra ou um PIN maior que o esperado.
   [campoPin, campoPinConfirma].forEach(function (campo) {
     if (!campo) return;
     campo.setAttribute('maxlength', '4');
@@ -553,11 +394,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const btnCopiarPix = document.getElementById('btnCopiarPix');
   const chavePixTexto = document.getElementById('chavePixTexto');
 
-  // Copia o texto para a área de transferência. Tenta primeiro a
-  // Clipboard API moderna; se o navegador não suportar (ou a
-  // permissão for negada), cai para o método antigo via
-  // document.execCommand, que funciona em praticamente qualquer
-  // navegador dentro de um clique do usuário.
   async function copiarTexto(texto) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try {
@@ -600,13 +436,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     5) PASSO 1 → PASSO 2: validação dos dados, trava antifraude
-        do lote e preenchimento do resumo
+     5) VALIDAÇÃO DE CADA PASSO + NAVEGAÇÃO
      ---------------------------------------------------------- */
 
-  // Valida SÓ os dados pessoais (Passo 1). A validação do
-  // comprovante saiu daqui — agora é responsabilidade exclusiva de
-  // validarComprovante(), chamada no Passo 2.
+  // Valida SÓ os dados pessoais (Passo 1).
   function validarPasso1() {
     esconderErro(erroInscricao);
 
@@ -637,9 +470,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return true;
   }
 
-  // Valida SÓ o comprovante (Passo 2) — mesmas regras de antes
-  // (obrigatório, tipo aceito, até 5 MB), só que isoladas do
-  // restante do formulário.
+  // Valida SÓ o comprovante (Passo 2).
   function validarComprovante() {
     esconderErro(erroComprovante);
 
@@ -665,12 +496,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Relê o card marcado como selecionado na hora de montar o resumo
   // (ou de confirmar, na seção 8), em vez de confiar apenas no
-  // estadoInscricao já guardado. Isso cobre o caso em que os preços
-  // do lote (seção 1.1) chegaram do Supabase depois da seleção
-  // inicial, e garante que #resumoValorTxt e valor_pago usem
-  // exatamente o mesmo número exibido no card. Cascata de segurança
-  // no valor: preço do card → último valor válido já guardado no
-  // estado → 0. Nunca deixa NaN chegar na tela nem no banco.
+  // estadoInscricao já guardado — garante que #resumoValorTxt e o
+  // valor enviado na RPC usam exatamente o mesmo número exibido no
+  // card. Cascata de segurança no valor: preço do card → último
+  // valor válido já guardado no estado → 0. Nunca deixa NaN chegar
+  // na tela nem na RPC.
   function sincronizarEstadoComCardSelecionado() {
     const cardSelecionado = document.querySelector('#combos .combo[data-selected="true"]');
     if (!cardSelecionado) return;
@@ -686,11 +516,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // Preenche os 4 campos do resumo com o estado atual. Extraída como
-  // função própria (em vez de ficar só dentro do clique de
-  // "Continuar") porque também é chamada por aplicarLoteNoEstado
-  // (seção 1.1) quando o lote muda via Realtime enquanto a pessoa já
-  // está olhando o resumo — mantendo os dois pontos sempre em
-  // sincronia com a mesma lógica.
+  // função própria porque também é chamada por
+  // carregarConfiguracoesCheckout (seção 1.1) se o preço mudar
+  // enquanto a pessoa já está olhando o resumo.
   function preencherResumoComEstadoAtual() {
     const arquivoComprovante = campoComprovante.files[0];
     resumoNomeTxt.textContent = campoNome.value.trim();
@@ -704,13 +532,11 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!validarPasso1()) return;
 
       // Limpa um aviso de duplicidade de uma tentativa anterior,
-      // antes de checar de novo — evita mostrar informação obsoleta
-      // enquanto a nova checagem ainda está rodando.
+      // antes de checar de novo.
       esconderAvisoDuplicidade();
 
       // Garante que o tipo de ingresso usado na checagem de
-      // duplicidade logo abaixo é exatamente o do card selecionado
-      // agora (o usuário pode ter trocado de combo antes de clicar).
+      // duplicidade abaixo é exatamente o do card selecionado agora.
       sincronizarEstadoComCardSelecionado();
 
       const nomeParaChecagem = campoNome.value.trim();
@@ -731,66 +557,13 @@ document.addEventListener('DOMContentLoaded', function () {
           return; // fica no Passo 1 — o botão é reabilitado no finally abaixo
         }
       } catch (erroInesperado) {
-        // Mesma postura de "fail-open" já usada no resto do arquivo:
-        // um erro na CHECAGEM em si não deve travar quem está
-        // tentando se inscrever de boa-fé.
+        // "Fail-open": um erro na CHECAGEM em si não deve travar
+        // quem está tentando se inscrever de boa-fé.
         console.error('[inscricao.js] Erro inesperado ao checar duplicidade:', erroInesperado);
       } finally {
         btnIrPagamento.disabled = false;
         btnIrPagamento.textContent = textoOriginalBotaoPagamento;
       }
-
-      // TRAVA ANTIFRAUDE: revalida o lote ativo em tempo real bem
-      // no momento da saída do Passo 1 — cobre o caso raro de o
-      // lote ter mudado ENQUANTO a pessoa preenchia o formulário
-      // (ex.: o 1º lote esgotou e o 2º entrou no ar nesse
-      // meio-tempo). Nenhum dado já digitado (nome, e-mail,
-      // telefone) é tocado nesta checagem.
-      const idLoteAntesDoClique = loteAtivoIdAtual;
-
-      try {
-        const { data, error } = await buscarLoteAtivoNoSupabase();
-
-        if (error) {
-          // Falha de rede/consulta: não trava a pessoa por causa
-          // disso — segue com os valores que já estavam na tela.
-          console.error('[inscricao.js] Falha ao revalidar o lote ativo antes do pagamento:', error);
-        } else if (!data) {
-          // Não existe mais NENHUM lote ativo — provavelmente
-          // esgotou enquanto a pessoa preenchia o Passo 1. Bloqueia
-          // a ida ao Passo 2 e mostra o modal dedicado, em vez do
-          // texto de erro comum (esse caso é bem mais definitivo do
-          // que só "o lote trocou").
-          mostrarModalLoteEsgotado();
-          return;
-        } else {
-          const loteRealmenteMudou =
-            idLoteAntesDoClique !== null && data.id !== undefined && data.id !== idLoteAntesDoClique;
-
-          // Sempre aplica os dados mais recentes (cobre também o
-          // caso de o MESMO lote ter só o preço/chave Pix editados,
-          // sem trocar de id).
-          esconderModalLoteEsgotado();
-          aplicarLoteNoEstado(data);
-
-          if (loteRealmenteMudou) {
-            mostrarErro(
-              erroInscricao,
-              'O lote anterior encerrou. Os valores foram atualizados para o ' +
-                (estadoInscricao.nomeLote || 'lote atual') +
-                '. Confira o novo valor e clique em Continuar novamente.'
-            );
-            return; // bloqueia a ida ao Passo 2 só desta vez
-          }
-        }
-      } catch (erroInesperado) {
-        console.error('[inscricao.js] Erro inesperado ao revalidar o lote ativo:', erroInesperado);
-      }
-
-      // Lote confirmado (ou sem mudança): garante que tipo e valor
-      // estão alinhados com o card visível antes de seguir para a
-      // tela de pagamento.
-      sincronizarEstadoComCardSelecionado();
 
       esconderTodasAsTelas();
       telaPagamentoPix.style.display = 'block';
@@ -815,8 +588,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
       esconderTodasAsTelas();
       telaResumo.style.display = 'block';
-      // Sem scrollIntoView: a troca de passo só alterna qual card
-      // está visível, mantendo a posição de rolagem do usuário.
     });
   }
 
@@ -837,13 +608,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // COMBO (que cobre os dois dias, tornando qualquer outra compra
   // redundante). Essa regra mora inteira na função SQL da RPC; aqui
   // só repassamos os três campos e lemos o booleano de volta.
-  //
-  // IMPORTANTE: isto não faz nenhum .select() direto na tabela
-  // "inscricoes" — a RLS bloqueia todo SELECT anônimo nela. A RPC
-  // roda no servidor (normalmente como SECURITY DEFINER no
-  // Postgres), então consegue consultar a tabela com seu próprio
-  // privilégio e devolve só um booleano — o navegador nunca lê a
-  // tabela diretamente.
+  // Mantida exatamente como já estava — nada aqui depende de lote.
   async function existeInscricaoDuplicada(nome, email, tipoIngresso) {
     const { data, error } = await window.supabaseClient.rpc('checar_inscricao_duplicada', {
       p_nome: nome,
@@ -852,10 +617,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     if (error) {
-      // Se a checagem em si falhar (ex.: instabilidade de rede), não
-      // travamos a inscrição por causa disso — deixamos seguir e uma
-      // eventual duplicidade é tratada manualmente pela equipe no
-      // painel administrativo.
       console.error('[inscricao.js] Erro ao checar duplicidade via RPC "checar_inscricao_duplicada":', error);
       return false;
     }
@@ -864,24 +625,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     7) GERAÇÃO DO CÓDIGO DO INGRESSO
+     7) HELPERS DE ARQUIVO E ERRO
      ---------------------------------------------------------- */
 
-  // Gera um código no formato "FC2026-XXXXXX", usando apenas
-  // letras maiúsculas e números para facilitar leitura e digitação
-  // manual na portaria, caso o QR code não possa ser lido.
-  function gerarCodigoIngresso() {
-    const caracteres = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem O/0/I/1 (evita confusão visual)
-    let sufixo = '';
-    for (let i = 0; i < 6; i++) {
-      const indice = Math.floor(Math.random() * caracteres.length);
-      sufixo += caracteres[indice];
-    }
-    return 'FC2026-' + sufixo;
-  }
-
-  // Simplifica a extração da extensão do arquivo — mantém a
-  // extensão original (em minúsculas) ou usa ".png" como
+  // Mantém a extensão original (em minúsculas) ou usa ".png" como
   // fallback caso o arquivo não tenha extensão reconhecível.
   function obterExtensao(nomeOriginal) {
     const partes = nomeOriginal.split('.');
@@ -890,23 +637,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Extrai a melhor mensagem de diagnóstico disponível de um erro,
   // seja ele um Error do JavaScript ou um objeto de erro retornado
-  // pelo Supabase (que às vezes usa "message" e às vezes
-  // "error_description"). Sempre retorna uma string, nunca undefined.
+  // pelo Supabase. Sempre retorna uma string, nunca undefined.
   function obterMensagemErro(erro, fallback) {
     if (!erro) return fallback;
     if (typeof erro === 'string') return erro;
     return erro.message || erro.error_description || fallback;
   }
 
-  // Lê o arquivo como ArrayBuffer antes do upload. Isso evita uma
-  // falha conhecida em navegadores mobile (principalmente Safari no
-  // iOS e alguns WebViews no Android): quando o objeto File é
-  // repassado diretamente para o upload, o corpo da requisição às
-  // vezes não é lido corretamente pelo fetch/stream interno desses
-  // navegadores, e a chamada fica "pendurada" por vários segundos
-  // até falhar. Convertendo para ArrayBuffer, o conteúdo do arquivo
-  // já está todo em memória antes do envio, então o upload passa a
-  // se comportar da mesma forma em desktop e em mobile.
+  // Lê o arquivo como ArrayBuffer antes do upload — evita uma falha
+  // conhecida em navegadores mobile (Safari iOS e alguns WebViews
+  // Android) onde o corpo da requisição não é lido corretamente
+  // quando um File é repassado diretamente para o upload.
   function lerArquivoComoArrayBuffer(arquivo) {
     return new Promise(function (resolve, reject) {
       const leitor = new FileReader();
@@ -921,15 +662,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     7.1) PIN DE SEGURANÇA: dupla validação (Passo 2)
+     7.1) PIN DE SEGURANÇA: dupla validação (Passo 3)
      ---------------------------------------------------------- */
 
-  // Confere se o PIN tem exatamente 4 dígitos numéricos e se os
-  // dois campos (PIN e confirmação) são idênticos. Retorna o PIN
-  // validado (string) em caso de sucesso, ou null se houver erro —
-  // já mostrando a mensagem correspondente em #erroResumo e focando
-  // o campo problemático, para o botão "Confirmar inscrição" poder
-  // simplesmente checar "if (!pin) return;".
   function validarPin() {
     const pin = campoPin ? campoPin.value.trim() : '';
     const pinConfirma = campoPinConfirma ? campoPinConfirma.value.trim() : '';
@@ -951,37 +686,23 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ----------------------------------------------------------
-     7.2) TIPO DE INGRESSO: normalização antes do INSERT
+     7.2) TIPO DE INGRESSO: normalização antes da criação
      ---------------------------------------------------------- */
 
-  // Os únicos valores que a coluna "tipo_ingresso" aceita no banco.
   const TIPOS_INGRESSO_VALIDOS = ['SEXTA', 'SABADO', 'COMBO'];
 
-  // Normaliza o tipo antes de gravar: tira espaços, força maiúsculas
-  // e confere contra a lista acima. Devolve null se o valor não for
-  // um dos três — assim a inscrição é abortada com uma mensagem
-  // clara em vez de estourar um erro de constraint do Postgres.
   function normalizarTipoIngresso(valorBruto) {
     const tipo = String(valorBruto || '').trim().toUpperCase();
     return TIPOS_INGRESSO_VALIDOS.includes(tipo) ? tipo : null;
   }
 
   /* ----------------------------------------------------------
-     8) PASSO 2 → PASSO 3: upload do comprovante + INSERT
+     8) PASSO 3 → SUCESSO: upload do comprovante + criação segura
+        da inscrição via RPC
      ---------------------------------------------------------- */
 
   // Faz upload do arquivo para o bucket "comprovantes" e devolve a
-  // URL pública do arquivo salvo. O nome do arquivo é gerado só com
-  // carimbo de data/hora + número aleatório + extensão — sem
-  // depender de normalizar o nome original — o que evita hífens
-  // repetidos e caracteres que o Storage do Supabase rejeita em
-  // alguns navegadores/idiomas. "upsert: true" evita erro 400 em
-  // caso de qualquer conflito de nome (colisão extremamente rara,
-  // já que o nome já é único por natureza). O conteúdo é enviado
-  // como ArrayBuffer (ver lerArquivoComoArrayBuffer acima) para
-  // manter compatibilidade com navegadores mobile; como o
-  // ArrayBuffer sozinho não carrega o tipo MIME, "contentType" é
-  // informado explicitamente a partir do arquivo original.
+  // URL pública do arquivo salvo.
   async function enviarComprovante(arquivo) {
     const extensao = obterExtensao(arquivo.name);
     const nomeArquivoUnico = `comprovante_${Date.now()}_${Math.floor(Math.random() * 10000)}${extensao}`;
@@ -1007,78 +728,55 @@ document.addEventListener('DOMContentLoaded', function () {
     return dadosUrlPublica.publicUrl;
   }
 
-  // Tenta inserir a inscrição no banco. Se o código gerado já
-  // existir (colisão, code 23505 = unique_violation), gera um novo
-  // código e tenta de novo, até um número máximo de tentativas —
-  // isso é extremamente raro (36^6 combinações), mas o código fica
-  // preparado para o caso.
-  //
-  // IMPORTANTE: propositalmente SEM .select()/.single() no final.
-  // A política de RLS da tabela "inscricoes" permite INSERT anônimo
-  // mas bloqueia SELECT para quem não é admin — encadear .select()
-  // faz o Supabase tentar reler a linha recém-criada logo em
-  // seguida, e essa releitura bloqueada invalidava o INSERT inteiro
-  // (erro "new row violates row-level security policy"), mesmo a
-  // gravação em si sendo permitida. Sem o .select(), o INSERT roda
-  // sozinho e não depende de nenhuma permissão de leitura.
-  //
-  // Consequência direta: não há mais como reler a linha gravada, então
-  // devolvemos o CÓDIGO GERADO LOCALMENTE (a única "fonte da verdade"
-  // que temos após um INSERT sem retorno) em vez da linha do banco.
-  async function inserirInscricaoComRetentativa(dadosBase, tentativasRestantes) {
-    const codigo = gerarCodigoIngresso();
+  // Chama a RPC criar_inscricao_segura e devolve a linha criada.
+  // Ver a nota "ATENÇÃO — SUPOSIÇÕES A CONFIRMAR" no cabeçalho do
+  // arquivo sobre o parâmetro p_comprovante_url.
+  async function criarInscricaoSegura(dados) {
+    const { data, error } = await window.supabaseClient.rpc('criar_inscricao_segura', {
+      p_nome: dados.nome,
+      p_email: dados.email,
+      p_telefone: dados.telefone,
+      p_pin: dados.pin,
+      p_tipo_ingresso: dados.tipoIngresso,
+      // Ver ATENÇÃO no cabeçalho: parâmetro extra, não confirmado.
+      p_comprovante_url: dados.comprovanteUrl,
+    });
 
-    const { error } = await window.supabaseClient
-      .from('inscricoes')
-      .insert([Object.assign({}, dadosBase, { codigo_ingresso: codigo })]);
-
-    if (!error) {
-      return codigo;
+    if (error) {
+      throw new Error('Falha ao salvar a inscrição: ' + obterMensagemErro(error, 'erro desconhecido ao gravar a inscrição.'));
     }
 
-    const eraColisaoDeCodigo = error.code === '23505';
-    if (eraColisaoDeCodigo && tentativasRestantes > 0) {
-      return inserirInscricaoComRetentativa(dadosBase, tentativasRestantes - 1);
+    // A RPC pode devolver um objeto único ou um array de 1 item.
+    const inscricaoCriada = Array.isArray(data) ? data[0] : data;
+    if (!inscricaoCriada) {
+      throw new Error('A inscrição não pôde ser confirmada. Tente novamente.');
     }
 
-    throw new Error('Falha ao salvar a inscrição: ' + obterMensagemErro(error, 'erro desconhecido ao gravar no banco.'));
+    return inscricaoCriada;
   }
 
   if (btnConfirmarInscricao) {
     btnConfirmarInscricao.addEventListener('click', async function (evento) {
       // Dispara de forma síncrona, ANTES de qualquer código
-      // assíncrono: evita que o clique acione algum comportamento
-      // padrão do navegador (relevante sobretudo em mobile, onde
-      // toques podem disparar eventos extras) e garante que o botão
-      // já nasça bloqueado antes de qualquer "await" rodar.
+      // assíncrono — garante que o botão já nasça bloqueado antes
+      // de qualquer "await" rodar.
       if (evento && typeof evento.preventDefault === 'function') {
         evento.preventDefault();
       }
 
-      // Se o botão já está desabilitado, uma segunda batida de dedo
-      // (comum em telas sensíveis, ou no delay de ~300ms de alguns
-      // navegadores mobile) é ignorada — impede disparar duas
-      // inscrições/uploads em paralelo para o mesmo clique.
       if (btnConfirmarInscricao.disabled) return;
 
       esconderErro(erroResumo);
 
-      // Valida o PIN ANTES de desabilitar o botão/travar a tela: se
-      // estiver errado, a pessoa corrige e clica de novo sem nenhum
-      // upload ou chamada ao Supabase ter sido feita.
       const pinValidado = validarPin();
       if (!pinValidado) return;
 
-      // Relê o card selecionado uma última vez, já que o usuário
-      // pode ter voltado ao Passo 1 e trocado de ingresso antes de
-      // confirmar. Garante que tipo e valor gravados são os mesmos
-      // que ele acabou de ver no resumo.
       sincronizarEstadoComCardSelecionado();
 
       const tipoIngressoValidado = normalizarTipoIngresso(estadoInscricao.tipoIngresso);
       if (!tipoIngressoValidado) {
         console.error(
-          '[inscricao.js] tipo_ingresso inválido no momento do INSERT:',
+          '[inscricao.js] tipo_ingresso inválido no momento da criação:',
           estadoInscricao.tipoIngresso
         );
         mostrarErro(erroResumo, 'Não foi possível identificar o ingresso selecionado. Volte e escolha a opção novamente.');
@@ -1090,9 +788,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
       const arquivo = campoComprovante.files[0];
       if (!arquivo) {
-        // Segurança extra: se por algum motivo o arquivo não estiver
-        // mais disponível (ex.: usuário voltou e trocou o campo),
-        // manda de volta para o passo 1 em vez de prosseguir.
         mostrarErro(erroResumo, 'O comprovante não foi encontrado. Volte e anexe novamente.');
         btnConfirmarInscricao.disabled = false;
         return;
@@ -1100,54 +795,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
       const nomeCompleto = campoNome.value.trim();
       const email = campoEmail.value.trim();
+      const telefone = campoTelefone.value.trim();
 
       try {
-        // A checagem de duplicidade agora acontece antes, no clique
-        // de "Ir para Pagamento" (Passo 1 → 2) — ver seção 5. Aqui
-        // já se sabe que passou por ela; só falta subir o
-        // comprovante e gravar.
         btnConfirmarInscricao.textContent = 'Enviando...';
         const urlComprovante = await enviarComprovante(arquivo);
 
-        const dadosInscricao = {
-          nome_completo: nomeCompleto,
+        btnConfirmarInscricao.textContent = 'Confirmando...';
+        const inscricaoCriada = await criarInscricaoSegura({
+          nome: nomeCompleto,
           email: email,
-          telefone: campoTelefone.value.trim(),
-          tipo_ingresso: tipoIngressoValidado,
-          valor_pago: Number(estadoInscricao.valor),
-          status_pagamento: 'pendente',
-          checkin_realizado: false,
-          comprovante_url: urlComprovante,
-          pin_seguranca: pinValidado,
-        };
-
-        // inserirInscricaoComRetentativa agora devolve só o CÓDIGO
-        // (string) gerado localmente — não há mais como reler a linha
-        // gravada (RLS bloqueia SELECT para quem não é admin), então
-        // as antigas checagens de divergência PIN/tipo_ingresso contra
-        // o retorno do banco deixaram de ser possíveis. Os valores
-        // exibidos na tela de sucesso são os mesmos três dados que
-        // acabamos de mandar no INSERT — nunca "voltaram" do banco,
-        // porque agora não há retorno nenhum em caso de sucesso.
-        const codigoGerado = await inserirInscricaoComRetentativa(dadosInscricao, 5);
+          telefone: telefone,
+          pin: pinValidado,
+          tipoIngresso: tipoIngressoValidado,
+          comprovanteUrl: urlComprovante,
+        });
 
         // Preenche e exibe a tela de sucesso. O pagamento ainda
-        // depende de conferência manual, então nenhum QR code é
-        // gerado aqui — só o código em texto e o PIN cadastrado,
-        // como referência.
+        // depende de conferência manual — o código e o PIN exibidos
+        // são os que a própria RPC devolveu (gerados/gravados no
+        // servidor).
         nomeSucesso.textContent = nomeCompleto.split(' ')[0];
         comboSucesso.textContent = NOMES_COMBO[estadoInscricao.tipoIngresso] || estadoInscricao.tipoIngresso;
-        codigoSucesso.textContent = codigoGerado;
-        if (pinSucesso) pinSucesso.textContent = pinValidado;
+        codigoSucesso.textContent = inscricaoCriada.codigo_ingresso || '';
+        if (pinSucesso) pinSucesso.textContent = inscricaoCriada.pin_seguranca || pinValidado;
 
         esconderTodasAsTelas();
         telaSucesso.style.display = 'block';
-        // Sem scrollIntoView: mantém a posição de rolagem do
-        // usuário ao trocar para a tela de sucesso.
       } catch (erro) {
-        // Mostra a mensagem REAL do erro (não uma genérica), para
-        // diagnosticar problemas específicos de dispositivo/rede
-        // relatados pelos usuários em campo.
         console.error('[inscricao.js] Erro ao confirmar inscrição:', erro);
         mostrarErro(erroResumo, obterMensagemErro(erro, 'Ocorreu um erro inesperado. Tente novamente.'));
       } finally {
@@ -1172,12 +847,12 @@ document.addEventListener('DOMContentLoaded', function () {
       esconderErro(erroInscricao);
       esconderErro(erroComprovante);
       esconderErro(erroResumo);
+      esconderAvisoDuplicidade();
 
       selecionarCombo(comboInicial || listaCombos[0]);
 
       esconderTodasAsTelas();
       telaForm.style.display = 'block';
-      // Sem scrollIntoView: volta para o Passo 1 sem forçar rolagem.
     });
   }
 
@@ -1185,10 +860,6 @@ document.addEventListener('DOMContentLoaded', function () {
      10) FAQ: MODAL ÚNICO DE DÚVIDAS FREQUENTES
      ---------------------------------------------------------- */
 
-  // Um único modal (#modalFaq) reaproveitado por todos os cards: ao
-  // clicar em qualquer um, o título/resposta do PRÓPRIO card
-  // (data-pergunta/data-resposta) são injetados nele antes de abrir
-  // — não existe um modal por pergunta.
   const faqCards = document.querySelectorAll('.faq-card');
   const modalFaq = document.getElementById('modalFaq');
   const modalFaqTitulo = document.getElementById('modalFaqTitulo');
@@ -1196,11 +867,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const btnFecharModalFaq = document.getElementById('btnFecharModalFaq');
 
   // Controla se o modal foi aberto "sob controle" da History API —
-  // ou seja, se nós mesmos empilhamos uma entrada de histórico ao
-  // abrir. Serve para decidir, ao fechar pela UI (X, backdrop, Esc),
-  // se precisamos "desfazer" essa entrada com history.back() — assim
-  // o botão/gesto "Voltar" do celular NUNCA sai de inscricao.html só
-  // porque o modal do FAQ estava aberto; ele só fecha o modal.
+  // usado para o botão/gesto "Voltar" do celular fechar o modal em
+  // vez de sair da página.
   let modalFaqAbertoPeloHistorico = false;
 
   function abrirModalFaq(pergunta, resposta) {
@@ -1211,30 +879,21 @@ document.addEventListener('DOMContentLoaded', function () {
     const jaEstavaAberto = modalFaq.classList.contains('aberto');
     modalFaq.classList.add('aberto');
 
-    // Só empilha uma entrada de histórico na abertura de fato — se o
-    // modal já estava aberto (a pessoa clicou em outro card sem
-    // fechar antes), só troca o conteúdo, sem empilhar de novo (isso
-    // evitaria que um só toque em "Voltar" bastasse para fechar).
     if (!jaEstavaAberto) {
       history.pushState({ modalFaqAberto: true }, '');
       modalFaqAbertoPeloHistorico = true;
     }
   }
 
-  // fechadoPeloHistorico=true quando esta função é chamada A PARTIR
-  // do evento "popstate" (ou seja, a pessoa já apertou Voltar e o
-  // navegador já trocou de entrada sozinho) — nesse caso só fechamos
-  // visualmente, sem chamar history.back() de novo (o que faria a
-  // página sair de inscricao.html de verdade).
   function fecharModalFaq(fechadoPeloHistorico) {
     if (!modalFaq) return;
-    if (!modalFaq.classList.contains('aberto')) return; // já fechado
+    if (!modalFaq.classList.contains('aberto')) return;
 
     modalFaq.classList.remove('aberto');
 
     if (modalFaqAbertoPeloHistorico && !fechadoPeloHistorico) {
       modalFaqAbertoPeloHistorico = false;
-      history.back(); // "consome" a entrada empilhada em abrirModalFaq
+      history.back();
     } else {
       modalFaqAbertoPeloHistorico = false;
     }
@@ -1245,12 +904,9 @@ document.addEventListener('DOMContentLoaded', function () {
       abrirModalFaq(card.getAttribute('data-pergunta'), card.getAttribute('data-resposta'));
     });
 
-    // Os cards já têm tabindex="0" e role="button" no HTML (para
-    // leitores de tela e navegação por teclado) — então também
-    // precisam abrir com Enter/Espaço, não só com clique do mouse.
     card.addEventListener('keydown', function (evento) {
       if (evento.key === 'Enter' || evento.key === ' ') {
-        evento.preventDefault(); // evita rolar a página no Espaço
+        evento.preventDefault();
         abrirModalFaq(card.getAttribute('data-pergunta'), card.getAttribute('data-resposta'));
       }
     });
@@ -1262,29 +918,18 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Fechar ao clicar no backdrop: só quando o clique foi no PRÓPRIO
-  // overlay (o fundo escuro/desfocado), não em algo dentro do
-  // .modal-box — senão qualquer clique dentro do card fecharia o
-  // modal também.
   if (modalFaq) {
     modalFaq.addEventListener('click', function (evento) {
       if (evento.target === modalFaq) fecharModalFaq(false);
     });
   }
 
-  // Fechar com Esc — só age se o modal do FAQ estiver realmente
-  // aberto, para não interferir com a tecla Esc em outras partes da
-  // página (ex.: o modal de lote esgotado, que tem seu próprio botão
-  // de fechar e continua funcionando independente disso).
   document.addEventListener('keydown', function (evento) {
     if (evento.key === 'Escape' && modalFaq && modalFaq.classList.contains('aberto')) {
       fecharModalFaq(false);
     }
   });
 
-  // Botão/gesto "Voltar" do navegador: se o modal do FAQ estiver
-  // aberto, apenas fecha ele — não deixa a pessoa sair de
-  // inscricao.html sem querer no meio da leitura de uma dúvida.
   window.addEventListener('popstate', function () {
     if (modalFaq && modalFaq.classList.contains('aberto')) {
       fecharModalFaq(true);
