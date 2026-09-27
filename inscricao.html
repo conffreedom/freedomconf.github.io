@@ -76,10 +76,6 @@
         <input id="campoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="numeric" maxlength="15" />
       </div>
 
-      <!-- Alerta do lote: usado tanto para erros de validação dos
-           campos acima quanto para o aviso da trava antifraude
-           ("o lote mudou enquanto você preenchia"), disparado no
-           clique de "Ir para Pagamento". -->
       <a class="btn btn-primary" id="btnIrPagamento">Ir para Pagamento</a>
       <p id="erroInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
 
@@ -102,10 +98,6 @@
       <button type="button" class="resumo-voltar" id="btnVoltarPagamento">← Voltar</button>
       <h2 class="heading" style="margin-top:0;">Passo 2 de 3 — Pagamento via Pix</h2>
       <p class="sub">Pague o valor abaixo com a chave Pix e anexe o comprovante.</p>
-
-      <p style="font-size:13.5px; color:#555; margin:0 0 4px;">
-        Pagamento referente ao <span id="nomeLoteAtivo">1º Lote</span>
-      </p>
 
       <div class="total-row">
         <span>Total a pagar<br><span class="pay-icons">
@@ -249,33 +241,9 @@
   </div>
 </div>
 
-<!-- Modal exibido quando NÃO existe nenhum lote com ativo = true
-     (todas as vagas esgotadas). Reaproveita o .modal-overlay/.modal-box
-     genéricos do projeto (mesmo usados pelo FAQ) — "overlay-neutro"
-     só troca o fundo para o padrão escuro/neutro das credenciais.
-     js/inscricao.js abre/fecha isto alternando a classe "aberto"
-     (mesmo mecanismo do .modal-overlay padrão). Impede a ida ao
-     Passo 2 enquanto estiver aberto — o botão "Ir para Pagamento"
-     continua clicável, mas o handler mostra este modal em vez de
-     avançar. -->
-<div class="modal-overlay overlay-neutro" id="modalLoteEsgotado">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3>Inscrições encerradas</h3>
-      <button type="button" class="modal-fechar" id="btnFecharModalLoteEsgotado" aria-label="Fechar">×</button>
-    </div>
-    <div class="modal-body">
-      <div style="font-size:40px; margin-bottom:14px;" aria-hidden="true">🙏</div>
-      <p>Uau, que alegria! Todas as vagas e lotes da Freedom Conf. 2026 já foram preenchidos.</p>
-      <p>Agradecemos demais o seu interesse — fique de olho nas nossas redes sociais para não perder a próxima edição!</p>
-      <a class="btn btn-primary" href="index.html" style="display:inline-block; text-decoration:none; margin-top:12px;">Entendi / Voltar ao Início</a>
-    </div>
-  </div>
-</div>
-
 <!-- 1) conexão com o Supabase; 2) lógica do formulário de inscrição -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js?v=2.0.0"></script>
-<script src="js/inscricao.js?v=3.0.0"></script>
+<script src="js/inscricao.js?v=5.0.0"></script>
 </body>
 </html>
