@@ -113,6 +113,14 @@
           <p class="pix-key-valor" id="chavePixTexto">pixpenielguaruja@hotmail.com</p>
           <button type="button" class="btn-copiar-pix" id="btnCopiarPix">Copiar Chave Pix</button>
         </div>
+        <!-- Titular da chave Pix — preenchido por js/inscricao.js a partir
+             de config.nome_titular_pix (RPC obter_configuracoes_checkout).
+             A linha inteira fica escondida (display:none) até o JS ter
+             um nome para mostrar — se a RPC falhar ou não devolver o
+             titular, nada aparece (nem o rótulo "Titular:" solto). -->
+        <p style="display:none; margin:8px 0 0; font-size:12.5px; color:#666;">
+          Titular: <strong id="chavePixTitular"></strong>
+        </p>
       </div>
 
       <div class="field">
