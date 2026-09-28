@@ -29,33 +29,34 @@
        window.SUPABASE_COMPROVANTES_BUCKET), carregado ANTES
        deste arquivo.
 
-   ATENÇÃO — SUPOSIÇÕES A CONFIRMAR (não recebi a definição exata
-   das duas RPCs, só o pedido para chamá-las):
+   RPCs deste arquivo (estrutura confirmada no Supabase):
 
-   1) obter_configuracoes_checkout — assumi que é chamada SEM
-      parâmetros e devolve (como objeto único, ou como array de 1
-      item — o código trata os dois formatos) as colunas
-      "preco_sexta", "preco_sabado", "preco_combo" e "chave_pix".
-      Importante: assumi UMA chave Pix só para o evento inteiro (não
-      mais uma por tipo de ingresso, como no antigo sistema de
-      lotes) — é por isso que #chavePixTexto agora recebe um valor
-      só, independente do card selecionado. Se a sua RPC ainda
-      devolver uma chave por tipo, me avise que eu adapto de volta
-      para o esquema "uma chave por card".
+   1) obter_configuracoes_checkout — chamada SEM parâmetros, ao
+      carregar a página. Devolve (objeto único ou array de 1 item —
+      o código trata os dois formatos) os campos "preco_sexta",
+      "preco_sabado", "preco_combo", "chave_pix" e
+      "nome_titular_pix". A chave Pix é UMA só para o evento inteiro
+      (não uma por tipo de ingresso) — por isso #chavePixTexto
+      recebe um valor único, independente do card selecionado. A
+      configuração inteira também fica guardada em memória, na
+      variável "configuracoesCheckoutAtuais" (seção 1.1).
 
-   2) criar_inscricao_segura — você especificou 5 parâmetros
-      (p_nome, p_email, p_telefone, p_pin, p_tipo_ingresso). Mantive
-      esses 5 exatamente como pedido, mas também incluí um 6º,
-      "p_comprovante_url", com a URL que acabou de subir para o
-      Storage. Sem esse parâmetro, o comprovante enviado fica sem
-      NENHUM vínculo com a inscrição criada — a equipe não teria
-      como conferir o pagamento no painel administrativo. Se a sua
-      RPC realmente não aceita esse parâmetro (ou usa outro nome),
-      é uma linha só para remover/ajustar — ver a função
-      "criarInscricaoSegura" na seção 8.
-      Também assumi que a RPC devolve (objeto único ou array de 1
-      item) a linha criada, incluindo "codigo_ingresso" e
-      "pin_seguranca" — usados na tela de sucesso.
+   2) criar_inscricao_segura — recebe exatamente 6 parâmetros, todos
+      text: p_nome, p_email, p_telefone, p_pin, p_tipo_ingresso e
+      p_comprovante_url (a URL pública do arquivo que acabou de subir
+      para o bucket "comprovantes" do Storage). Devolve (objeto único
+      ou array de 1 item) a linha criada, incluindo "codigo_ingresso"
+      e "pin_seguranca" — usados na tela de sucesso.
+
+   3) checar_inscricao_duplicada — chamada no "Ir para Pagamento"
+      (Passo 1 → 2), com p_nome, p_email e p_tipo_ingresso.
+
+   ATENÇÃO — elementos de exibição: os preços aparecem nos cards de
+   ingresso (.combo[data-id="SEXTA|SABADO|COMBO"] .preco) e a chave
+   Pix em #chavePixTexto — os mesmos elementos de sempre. O titular
+   da chave Pix aparece no elemento opcional #chavePixTitular (se
+   você renomeou algum desses elementos no seu HTML, é só ajustar os
+   seletores em MAPA_CARDS_PRECO e nos getElementById da seção 1.1).
 
    A contagem regressiva, o menu mobile e o scroll reveal da
    Landing Page NÃO estão mais aqui — ver js/main.js. A consulta de
@@ -177,6 +178,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const chavePixTextoEl = document.getElementById('chavePixTexto');
 
+  // Elemento OPCIONAL para o nome do titular da chave Pix
+  // (config.nome_titular_pix) — campo novo que a RPC passou a
+  // devolver. Se #chavePixTitular não existir no HTML, o código
+  // simplesmente não escreve nada nele; nada mais depende disso.
+  const chavePixTitularEl = document.getElementById('chavePixTitular');
+
+  // Guarda a última configuração de checkout recebida (preços +
+  // chave Pix + titular), inteira, em memória — para qualquer parte
+  // do arquivo que precise consultar os valores brutos da RPC, além
+  // do que já fica refletido no DOM (data-preco dos cards, texto da
+  // chave Pix). Começa null até a primeira resposta da RPC chegar.
+  let configuracoesCheckoutAtuais = null;
+
   // Formata só o número, sem o "R$" (ex.: "20,00") — usado para
   // montar o preço em 2 linhas dentro do card (.preco-cifrao /
   // .preco-valor, já existentes no styles.css).
@@ -258,6 +272,23 @@ document.addEventListener('DOMContentLoaded', function () {
     } else if (!config.chave_pix) {
       console.warn('[inscricao.js] "chave_pix" veio vazia/nula nas configurações de checkout — mantendo a chave estática do HTML.');
     }
+
+    // Nome do titular da chave Pix — só escreve se o elemento
+    // opcional existir no HTML (ver nota em chavePixTitularEl acima).
+    if (chavePixTitularEl && config.nome_titular_pix) {
+      chavePixTitularEl.textContent = config.nome_titular_pix;
+      // A linha "Titular: ..." nasce escondida no HTML (display:none
+      // no <p> pai) — só é revelada aqui, quando de fato existe um
+      // nome para mostrar.
+      if (chavePixTitularEl.parentElement) {
+        chavePixTitularEl.parentElement.style.display = 'block';
+      }
+    }
+
+    // Guarda a configuração inteira (incluindo nome_titular_pix) em
+    // memória, para uso posterior no cálculo/confirmação da
+    // inscrição, além do que já foi aplicado diretamente no DOM.
+    configuracoesCheckoutAtuais = config;
 
     // Re-seleciona o card já marcado para o #totalValor refletir o
     // preço novo imediatamente (a seleção inicial rodou antes desta
@@ -701,6 +732,12 @@ document.addEventListener('DOMContentLoaded', function () {
         da inscrição via RPC
      ---------------------------------------------------------- */
 
+  // Nome do bucket de comprovantes no Storage. Vem da constante global
+  // definida em js/supabase-client.js; "comprovantes" é só uma rede de
+  // segurança caso essa constante não esteja disponível por algum
+  // motivo (ex.: ordem dos <script> alterada).
+  const BUCKET_COMPROVANTES = window.SUPABASE_COMPROVANTES_BUCKET || 'comprovantes';
+
   // Faz upload do arquivo para o bucket "comprovantes" e devolve a
   // URL pública do arquivo salvo.
   async function enviarComprovante(arquivo) {
@@ -710,7 +747,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const conteudoArquivo = await lerArquivoComoArrayBuffer(arquivo);
 
     const { error: erroUpload } = await window.supabaseClient.storage
-      .from(window.SUPABASE_COMPROVANTES_BUCKET)
+      .from(BUCKET_COMPROVANTES)
       .upload(nomeArquivoUnico, conteudoArquivo, {
         cacheControl: '3600',
         upsert: true,
@@ -722,15 +759,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const { data: dadosUrlPublica } = window.supabaseClient.storage
-      .from(window.SUPABASE_COMPROVANTES_BUCKET)
+      .from(BUCKET_COMPROVANTES)
       .getPublicUrl(nomeArquivoUnico);
 
     return dadosUrlPublica.publicUrl;
   }
 
   // Chama a RPC criar_inscricao_segura e devolve a linha criada.
-  // Ver a nota "ATENÇÃO — SUPOSIÇÕES A CONFIRMAR" no cabeçalho do
-  // arquivo sobre o parâmetro p_comprovante_url.
+  // Os 6 parâmetros são todos text (estrutura confirmada no
+  // Supabase); ver a lista completa no cabeçalho do arquivo.
   async function criarInscricaoSegura(dados) {
     const { data, error } = await window.supabaseClient.rpc('criar_inscricao_segura', {
       p_nome: dados.nome,
@@ -738,7 +775,6 @@ document.addEventListener('DOMContentLoaded', function () {
       p_telefone: dados.telefone,
       p_pin: dados.pin,
       p_tipo_ingresso: dados.tipoIngresso,
-      // Ver ATENÇÃO no cabeçalho: parâmetro extra, não confirmado.
       p_comprovante_url: dados.comprovanteUrl,
     });
 
