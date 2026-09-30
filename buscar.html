@@ -42,38 +42,55 @@
       <text font-size="30"><textPath href="#arcBuscar" startOffset="50%" text-anchor="middle">FREEDOM CONF</textPath></text>
     </svg>
     <h1 class="heading">Minha credencial</h1>
-    <p class="sub">Digite seu nome completo, o e-mail usado na inscrição e o PIN de 4 dígitos para ver sua credencial.</p>
+    <p class="sub">Consulte sua credencial ou transfira seu ingresso para outra pessoa.</p>
 
-    <!-- Formulário de busca: nome completo + e-mail + PIN, os 3
-         juntos — a RPC buscar_credencial_individual exige os três
-         campos numa única chamada, sem etapa intermediária. -->
+    <!-- A página principal mostra só os 2 botões — os campos de
+         busca foram para dentro do #modalConsulta logo abaixo. -->
     <div class="form-card" id="formBusca">
-      <div class="field">
-        <label for="campoBuscaNome">Nome completo</label>
-        <input id="campoBuscaNome" placeholder="Seu nome completo" autocomplete="name" />
-      </div>
-      <div class="field">
-        <label for="campoBuscaEmail">E-mail</label>
-        <input id="campoBuscaEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
-      </div>
-      <div class="field">
-        <label for="campoBuscaPin">PIN de segurança (4 dígitos)</label>
-        <input id="campoBuscaPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
-      </div>
+      <button type="button" class="btn btn-primary" id="btnAbrirConsulta" style="width:100%; text-align:center;">Consultar Credencial</button>
+      <button type="button" class="btn btn-primary" id="btnAbrirTransferencia" style="width:100%; text-align:center; margin-top:10px;">Transferir Ingresso</button>
+    </div>
 
-      <button type="button" class="btn btn-primary" id="btnBuscarCredencial" style="width:100%; text-align:center;">Consultar Credencial</button>
-      <button type="button" class="btn btn-primary" id="btnAbrirTransferencia" style="width:100%; text-align:center; margin-top:10px;">TRANSFERIR INGRESSO</button>
+    <!-- Modal de CONSULTA: nome completo + e-mail + PIN, os 3 juntos
+         — a RPC buscar_credencial_individual exige os três campos
+         numa única chamada, sem etapa intermediária. Aberto pelo
+         botão "Consultar Credencial" da página principal; fecha
+         sozinho assim que a busca encontra um resultado (o
+         resultado aparece na página, fora do modal). -->
+    <div class="modal-overlay" id="modalConsulta">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Consultar credencial</h3>
+          <button type="button" class="modal-fechar" id="btnFecharModalConsulta" aria-label="Fechar">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="campoBuscaNome">Nome completo</label>
+            <input id="campoBuscaNome" placeholder="Seu nome completo" autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="campoBuscaEmail">E-mail</label>
+            <input id="campoBuscaEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label for="campoBuscaPin">PIN de segurança (4 dígitos)</label>
+            <input id="campoBuscaPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+          </div>
 
-      <!-- Mensagens de erro (nada encontrado, falha na busca etc.) -->
-      <p id="erroBuscaCredencial" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+          <button type="button" class="btn btn-primary" id="btnBuscarCredencial" style="width:100%; text-align:center;">Consultar Credencial</button>
 
-      <!-- Aviso de bloqueio temporário por excesso de tentativas
-           incorretas — estrutura visual pronta; js/buscar.js
-           controla quando aparece, com base no contador salvo em
-           localStorage. -->
-      <div class="bloqueio-aviso" id="bloqueioAviso" style="display:none;">
-        <strong>Muitas tentativas incorretas.</strong>
-        <span id="bloqueioAvisoTexto"> Tente novamente em alguns minutos.</span>
+          <!-- Mensagens de erro (nada encontrado, falha na busca etc.) -->
+          <p id="erroBuscaCredencial" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+
+          <!-- Aviso de bloqueio temporário por excesso de tentativas
+               incorretas — estrutura visual pronta; js/buscar.js
+               controla quando aparece, com base no contador salvo em
+               localStorage. -->
+          <div class="bloqueio-aviso" id="bloqueioAviso" style="display:none;">
+            <strong>Muitas tentativas incorretas.</strong>
+            <span id="bloqueioAvisoTexto"> Tente novamente em alguns minutos.</span>
+          </div>
+        </div>
       </div>
     </div>
 
