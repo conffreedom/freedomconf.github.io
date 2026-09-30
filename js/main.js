@@ -7,6 +7,8 @@
      3) Scroll Reveal — animação sutil de aparecimento (fade-in)
         das seções conforme o usuário rola a página, usando
         IntersectionObserver.
+     4) Versículo João 8:36 — animação de digitação (typewriter),
+        disparada uma única vez quando a seção entra na tela.
 
    O formulário de inscrição, a consulta por e-mail/código e a
    geração do QR code da credencial NÃO estão mais aqui — essa
@@ -145,5 +147,111 @@ document.addEventListener('DOMContentLoaded', function () {
     elementosParaRevelar.forEach(function (elemento) {
       elemento.classList.add('visivel');
     });
+  }
+
+  /* ----------------------------------------------------------
+     4) VERSÍCULO — ANIMAÇÃO DE DIGITAÇÃO (typewriter)
+     ---------------------------------------------------------- */
+
+  // Como funciona (ver ".verse-*" em css/styles.css):
+  //   • #versiculoTexto (fantasma) guarda o texto completo e reserva
+  //     a altura final — é dele que o JS lê o texto a digitar;
+  //   • na camada visível, o texto completo é dividido em duas partes:
+  //     "digitado" (visível) + "resto" (transparente). Assim cada letra
+  //     aparece exatamente onde ficará no final, sem deslocar linhas;
+  //   • as classes "digitando", "concluido" e "cursor-fim" em #versiculo
+  //     controlam cursor e referência (a animação em si está no CSS).
+  const versiculo = document.getElementById('versiculo');
+  const elVersiculoTexto = document.getElementById('versiculoTexto');
+  const elVersiculoDigitado = document.getElementById('versiculoDigitado');
+  const elVersiculoCursor = document.getElementById('versiculoCursor');
+
+  if (versiculo && elVersiculoTexto && elVersiculoDigitado && elVersiculoCursor) {
+    const textoVersiculo = elVersiculoTexto.textContent.trim();
+    const letras = Array.from(textoVersiculo);
+
+    // Cadência (milissegundos)
+    const ATRASO_INICIAL = 400;   // cursor pisca um instante antes da 1ª letra
+    const ATRASO_LETRA = 55;      // tempo médio entre letras
+    const VARIACAO_LETRA = 30;    // sorteio de ±(metade) para soar humano
+    const ATRASO_VIRGULA = 420;   // pausa depois de cada vírgula
+    const CURSOR_APOS_FIM = 3000; // cursor segue piscando após terminar
+    const DURACAO_FADE_CURSOR = 800; // igual a "verse-sumir" no CSS
+
+    // Parte ainda não digitada: começa com o texto inteiro (invisível),
+    // logo depois do cursor.
+    const elResto = document.createElement('span');
+    elResto.className = 'verse-resto';
+    elResto.textContent = textoVersiculo;
+    elVersiculoCursor.after(elResto);
+
+    // Mostra o versículo completo de uma vez (sem animação).
+    function mostrarVersiculoCompleto() {
+      elVersiculoDigitado.textContent = textoVersiculo;
+      elResto.textContent = '';
+      versiculo.classList.add('concluido');
+    }
+
+    function digitarVersiculo() {
+      versiculo.classList.add('digitando');
+      let indice = 0;
+
+      function proximaLetra() {
+        indice += 1;
+        elVersiculoDigitado.textContent = letras.slice(0, indice).join('');
+        elResto.textContent = letras.slice(indice).join('');
+
+        // Terminou: mostra a referência, deixa o cursor piscar mais
+        // um pouco e depois o apaga com fade-out.
+        if (indice >= letras.length) {
+          versiculo.classList.add('concluido');
+          setTimeout(function () {
+            versiculo.classList.add('cursor-fim');
+            setTimeout(function () {
+              versiculo.classList.remove('digitando');
+            }, DURACAO_FADE_CURSOR + 100);
+          }, CURSOR_APOS_FIM);
+          return;
+        }
+
+        // Atraso até a próxima letra: maior depois de vírgula.
+        const ultima = letras[indice - 1];
+        const atraso = ultima === ','
+          ? ATRASO_VIRGULA
+          : ATRASO_LETRA + (Math.random() - 0.5) * VARIACAO_LETRA;
+        setTimeout(proximaLetra, atraso);
+      }
+
+      setTimeout(proximaLetra, ATRASO_INICIAL);
+    }
+
+    const prefereMenosMovimento =
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (prefereMenosMovimento) {
+      // Quem pediu menos movimento vê o versículo pronto.
+      mostrarVersiculoCompleto();
+    } else if ('IntersectionObserver' in window) {
+      // Gatilho de scroll: começa quando o versículo entra na tela,
+      // uma única vez (o observador se desliga logo em seguida).
+      const observadorVersiculo = new IntersectionObserver(
+        function (entradas, observador) {
+          entradas.forEach(function (entrada) {
+            if (!entrada.isIntersecting) return;
+            observador.disconnect();
+            digitarVersiculo();
+          });
+        },
+        {
+          threshold: 0.5,
+          rootMargin: '0px 0px -60px 0px',
+        }
+      );
+      observadorVersiculo.observe(versiculo);
+    } else {
+      // Navegador sem IntersectionObserver: mostra tudo de uma vez.
+      mostrarVersiculoCompleto();
+    }
   }
 });
