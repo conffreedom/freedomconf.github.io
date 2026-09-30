@@ -47,6 +47,14 @@ document.addEventListener('DOMContentLoaded', function () {
     COMBO: 'Sexta + Sábado',
   };
 
+  // Modal de CONSULTA: só abre/fecha a caixa que contém os campos —
+  // a lógica de busca em si (validação, RPC, resultado) continua
+  // exatamente a mesma de antes, só que agora disparada de dentro
+  // do modal em vez de um formulário solto na página.
+  const modalConsulta = document.getElementById('modalConsulta');
+  const btnAbrirConsulta = document.getElementById('btnAbrirConsulta');
+  const btnFecharModalConsulta = document.getElementById('btnFecharModalConsulta');
+
   const campoBuscaNome = document.getElementById('campoBuscaNome');
   const campoBuscaEmail = document.getElementById('campoBuscaEmail');
   const campoBuscaPin = document.getElementById('campoBuscaPin');
@@ -128,6 +136,45 @@ document.addEventListener('DOMContentLoaded', function () {
     const ano = data.getFullYear();
     return dia + '/' + mes + '/' + ano;
   }
+
+  /* ----------------------------------------------------------
+     0.1) MODAL DE CONSULTA: só abre/fecha a caixa com os 3 campos.
+          A lógica de busca em si (validação, RPC, resultado) fica
+          inteira na seção 4, sem nenhuma mudança de comportamento.
+     ---------------------------------------------------------- */
+
+  function abrirModalConsulta() {
+    if (!modalConsulta) return;
+    esconderErro(erroBuscaCredencial);
+    modalConsulta.classList.add('aberto');
+    // Já deixa o cursor pronto no primeiro campo — poupa um toque
+    // extra em quem está no celular.
+    if (campoBuscaNome) campoBuscaNome.focus();
+  }
+
+  function fecharModalConsulta() {
+    if (!modalConsulta) return;
+    modalConsulta.classList.remove('aberto');
+  }
+
+  if (btnAbrirConsulta) {
+    btnAbrirConsulta.addEventListener('click', abrirModalConsulta);
+  }
+  if (btnFecharModalConsulta) {
+    btnFecharModalConsulta.addEventListener('click', fecharModalConsulta);
+  }
+  if (modalConsulta) {
+    // Clicar no fundo escurecido (fora da caixa) também fecha —
+    // mesmo padrão já usado nos outros modais do site.
+    modalConsulta.addEventListener('click', function (evento) {
+      if (evento.target === modalConsulta) fecharModalConsulta();
+    });
+  }
+  document.addEventListener('keydown', function (evento) {
+    if (evento.key === 'Escape' && modalConsulta && modalConsulta.classList.contains('aberto')) {
+      fecharModalConsulta();
+    }
+  });
 
   /* ----------------------------------------------------------
      1) PROTEÇÃO ANTI-FORÇA-BRUTA (localStorage)
@@ -433,8 +480,11 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // Nome + e-mail + PIN bateram: zera o contador de tentativas
-      // erradas.
+      // erradas e fecha o modal de consulta — o resultado (ou o
+      // seletor de ingressos, se houver mais de um) aparece na
+      // própria página, fora do modal.
       resetarTentativas();
+      fecharModalConsulta();
 
       if (data.length === 1) {
         // Um só ingresso: vai direto para a credencial, sem
