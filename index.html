@@ -20,7 +20,14 @@
 <!-- Estilos centralizados do projeto (site público + admin) -->
 <!-- "?v=8" força o navegador a buscar a versão nova sempre que o -->
 <!-- número da versão mudar, mesmo com cache antigo salvo. -->
-<link rel="stylesheet" href="css/styles.css?v=8">
+<link rel="stylesheet" href="css/styles.css?v=9">
+<noscript>
+  <style>
+    .verse-fantasma { color: inherit !important; }
+    .verse-camada { display: none !important; }
+    .verse-ref { opacity: 1 !important; }
+  </style>
+</noscript>
 </head>
 <body>
 
@@ -91,9 +98,16 @@
   </div>
 
   <div class="verse">
-    <div class="fade-in-section">
-      <blockquote>"Se, pois, o Filho vos libertar, verdadeiramente sereis livres."</blockquote>
-      João 8:36
+    <div id="versiculo" class="verse-wrap">
+      <blockquote class="verse-texto">
+        <!-- Texto completo, invisível (via CSS): reserva a altura final no layout
+             e continua acessível para leitores de tela. É também a fonte do texto
+             que o JS vai "digitar". -->
+        <span class="verse-fantasma" id="versiculoTexto">"Se, pois, o Filho vos libertar, verdadeiramente sereis livres."</span>
+        <!-- Camada visível: o JS preenche letra por letra, com o cursor logo depois. -->
+        <span class="verse-camada" aria-hidden="true"><span id="versiculoDigitado"></span><span class="verse-cursor" id="versiculoCursor">|</span></span>
+      </blockquote>
+      <p class="verse-ref" id="versiculoRef">João 8:36</p>
     </div>
   </div>
 
@@ -174,6 +188,6 @@
 </section>
 
 <!-- 1) menu mobile; 2) contagem regressiva; 3) animações de rolagem -->
-<script src="js/main.js?v=4.0.0"></script>
+<script src="js/main.js?v=4.1.0"></script>
 </body>
 </html>
