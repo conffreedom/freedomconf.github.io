@@ -129,6 +129,68 @@ body{
 }
 .verse cite{ font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--bege); font-style:normal; }
 
+/* ---- versículo: animação de digitação (typewriter) ----
+   Duas camadas empilhadas dentro do mesmo blockquote:
+   • .verse-fantasma → texto completo, transparente. Ocupa o espaço final
+     em qualquer largura de tela (sem pulos de layout) e segue legível
+     para leitores de tela.
+   • .verse-camada   → sobreposta ao fantasma, mesmo texto e mesma
+     tipografia. O JS escreve aqui, letra por letra. */
+.verse-texto{ position:relative; }
+.verse-fantasma{ display:block; color:transparent; }
+.verse-camada{
+  position:absolute; top:0; left:0; right:0;
+  pointer-events:none;
+}
+
+/* Parte ainda não digitada: ocupa o lugar dela, mas fica invisível.
+   Assim as quebras de linha e a centralização são idênticas ao texto
+   final, e nenhuma palavra "pula" de linha enquanto é digitada.
+   (O elemento é criado pelo JS na etapa 3.) */
+.verse-resto{ color:transparent; }
+
+/* Cursor "|": largura zero, então não desloca o texto. Só aparece
+   quando o JS marca #versiculo com ".digitando". */
+.verse-cursor{
+  display:inline-block; width:0; overflow:visible;
+  font-style:normal; font-weight:300; color:var(--bege);
+  opacity:0;
+}
+.verse-wrap.digitando .verse-cursor{
+  opacity:1;
+  animation:verse-piscar 1s steps(1) infinite;
+}
+@keyframes verse-piscar{
+  0%, 49.99%{ opacity:1; }
+  50%, 100%{ opacity:0; }
+}
+
+/* Referência "João 8:36": o espaço já está reservado (opacity não
+   tira o elemento do layout). O JS adiciona ".concluido" ao terminar
+   de digitar e o fade-in acontece por aqui. */
+.verse-ref{
+  margin:0; opacity:0;
+  transition:opacity .9s ease;
+}
+.verse-wrap.concluido .verse-ref{ opacity:1; }
+
+/* Cursor continua piscando por 3s depois de concluir; o JS então
+   adiciona ".cursor-fim" e ele some com um fade-out discreto. */
+.verse-wrap.cursor-fim .verse-cursor{
+  animation:verse-sumir .8s ease forwards;
+}
+@keyframes verse-sumir{
+  from{ opacity:1; }
+  to{ opacity:0; }
+}
+
+/* Menos movimento: mostra o versículo pronto, sem digitação. */
+@media (prefers-reduced-motion: reduce){
+  .verse-fantasma{ color:inherit; }
+  .verse-camada{ display:none; }
+  .verse-ref{ opacity:1; transition:none; }
+}
+
 /* ---- local e programação (mistura cinza) ---- */
 .details{ background:var(--cinza); padding:70px 24px; }
 .details-grid{
