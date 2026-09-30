@@ -284,17 +284,21 @@ document.addEventListener('DOMContentLoaded', function () {
     resultadoConsulta.style.display = 'block';
   }
 
-  function gerarQrCodeCredencial(codigo) {
-    if (!credencialQrcodeBox || typeof QRCode === 'undefined') return;
-    credencialQrcodeBox.innerHTML = '';
-    new QRCode(credencialQrcodeBox, {
-      text: codigo,
-      width: 160,
-      height: 160,
-      colorDark: '#0f281e',
-      colorLight: '#f5f0eb',
-    });
-  }
+  function gerarQrCodeCredencial(inscricao) {
+  if (!credencialQrcodeBox || typeof QRCode === 'undefined') return;
+  credencialQrcodeBox.innerHTML = '';
+
+  // Formata o conteúdo do QR Code para incluir o Nome Completo e o Código
+  const payloadQrCode = `Nome: ${inscricao.nome_completo || ''}\nIngresso: ${inscricao.codigo_ingresso || ''}`;
+
+  new QRCode(credencialQrcodeBox, {
+    text: payloadQrCode,
+    width: 160,
+    height: 160,
+    colorDark: '#0f281e',
+    colorLight: '#f5f0eb',
+  });
+}
 
   /* ----------------------------------------------------------
      3.1) MODAL DE SELEÇÃO DE INGRESSOS (mesma pessoa, mais de uma
@@ -397,7 +401,7 @@ document.addEventListener('DOMContentLoaded', function () {
       credencialNome.textContent = obterPrimeiroEUltimoNome(inscricao.nome_completo);
       credencialTipo.textContent = NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso;
       credencialCodigo.textContent = inscricao.codigo_ingresso;
-      gerarQrCodeCredencial(inscricao.codigo_ingresso);
+      gerarQrCodeCredencial(inscricao);
       mostrarEstado(resultadoAprovado);
     } else if (inscricao.status_pagamento === 'recusado') {
       recusadoNome.textContent = (inscricao.nome_completo || '').split(' ')[0];
