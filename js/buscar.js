@@ -284,21 +284,33 @@ document.addEventListener('DOMContentLoaded', function () {
     resultadoConsulta.style.display = 'block';
   }
 
-  function gerarQrCodeCredencial(inscricao) {
-  if (!credencialQrcodeBox || typeof QRCode === 'undefined') return;
-  credencialQrcodeBox.innerHTML = '';
+ function gerarQrCodeCredencial(inscricao) {
+    if (!credencialQrcodeBox || typeof QRCode === 'undefined') return;
+    credencialQrcodeBox.innerHTML = '';
 
-  // Formata o conteúdo do QR Code para incluir o Nome Completo e o Código
-  const payloadQrCode = `Nome: ${inscricao.nome_completo || ''}\nIngresso: ${inscricao.codigo_ingresso || ''}`;
+    // Log para depuração: abra o Console do navegador (F12) para ver a estrutura do objeto
+    console.log('[DEBUG] Dados da inscrição recebidos:', inscricao);
 
-  new QRCode(credencialQrcodeBox, {
-    text: payloadQrCode,
-    width: 160,
-    height: 160,
-    colorDark: '#0f281e',
-    colorLight: '#f5f0eb',
-  });
-}
+    // Tenta pegar o nome completo de diferentes propriedades possíveis
+    const nomeCompleto = (typeof inscricao === 'object' && inscricao !== null)
+      ? (inscricao.nome_completo || inscricao.nome || inscricao.p_nome || '')
+      : '';
+
+    const codigo = (typeof inscricao === 'object' && inscricao !== null)
+      ? (inscricao.codigo_ingresso || inscricao.codigo || '')
+      : (inscricao || '');
+
+    // Conteúdo final gravado no QR Code
+    const payloadQrCode = `Nome: ${nomeCompleto.trim()}\nIngresso: ${codigo.trim()}`;
+
+    new QRCode(credencialQrcodeBox, {
+      text: payloadQrCode,
+      width: 160,
+      height: 160,
+      colorDark: '#0f281e',
+      colorLight: '#f5f0eb',
+    });
+  }
 
   /* ----------------------------------------------------------
      3.1) MODAL DE SELEÇÃO DE INGRESSOS (mesma pessoa, mais de uma
