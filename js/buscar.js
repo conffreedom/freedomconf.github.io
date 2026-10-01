@@ -410,7 +410,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function renderizarResultado(inscricao) {
     if (inscricao.status_pagamento === 'aprovado') {
-      credencialNome.textContent = obterPrimeiroEUltimoNome(inscricao.nome_completo);
+      credencialNome.textContent = inscricao.nome_completo;
       credencialTipo.textContent = NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso;
       credencialCodigo.textContent = inscricao.codigo_ingresso;
       gerarQrCodeCredencial(inscricao);
