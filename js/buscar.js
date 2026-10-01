@@ -487,18 +487,18 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      if (!Array.isArray(data) || data.length === 0) {
+     if (!Array.isArray(data) || data.length === 0) {
+        // Incrementa o contador de tentativas erradas e aplica bloqueio se atingir o limite
         registrarTentativaErrada();
+        
         if (!atualizarUiBloqueio()) {
-          mostrarEstado(resultadoNaoEncontrado);
+          // Mantém o modal aberto e exibe o aviso de erro
+          mostrarErro(erroBuscaCredencial, 'Inscrição não encontrada. Verifique se o Nome, E-mail e PIN estão corretos.');
         }
         return;
       }
 
-      // Nome + e-mail + PIN bateram: zera o contador de tentativas
-      // erradas e fecha o modal de consulta — o resultado (ou o
-      // seletor de ingressos, se houver mais de um) aparece na
-      // própria página, fora do modal.
+      // Busca válida! Zera as tentativas incorretas e fecha o modal de consulta
       resetarTentativas();
       fecharModalConsulta();
 
